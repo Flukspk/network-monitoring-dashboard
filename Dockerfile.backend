@@ -2,10 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /usr/src/backend
 
+# copy เฉพาะ package.json และ package-lock.json ก่อน
+COPY backend/package*.json ./
+
+# ติดตั้ง dependencies
+RUN npm install
+
+# copy โค้ดที่เหลือ
 COPY backend/ ./
 
-RUN npm install express body-parser
-
 EXPOSE 5000
-
 CMD ["node", "server.js"]
+
