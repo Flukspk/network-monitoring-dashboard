@@ -1,0 +1,11 @@
+FROM node:20-alpine
+
+WORKDIR /usr/src/backend
+
+COPY backend/ ./
+
+RUN npm install express body-parser
+
+EXPOSE 5000
+
+CMD ["node", "server.js"]
