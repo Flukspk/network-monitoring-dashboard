@@ -2,11 +2,11 @@ version: '3.8'
 services:
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend        
+      dockerfile: Dockerfile   
     container_name: monitoring-backend
     ports:
-      - "5001:5000"
+      - "5001:5000"            
     depends_on:
       - db
     environment:
@@ -14,15 +14,6 @@ services:
       - DB_USER=spkz14
       - DB_PASSWORD=123456za
       - DB_NAME=monitoring
-    restart: always
-
-  ping-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile.agent
-    container_name: ping-agent
-    depends_on:
-      - backend
     restart: always
 
   db:
