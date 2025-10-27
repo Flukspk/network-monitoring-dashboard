@@ -15,7 +15,7 @@ async function runPingTests() {
     });
   }
 
-  // ส่งข้อมูลไป backend
+
   await axios.post(`${config.backendUrl}/api/metrics/ping`, results);
 }
 
