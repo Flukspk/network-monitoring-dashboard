@@ -7,6 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node modules & build
 node_modules
 .DS_Store
 dist
@@ -25,7 +26,6 @@ coverage
 *.sw?
 
 *.tsbuildinfo
-
 .eslintcache
 
 # Cypress
@@ -34,3 +34,13 @@ coverage
 
 # Vitest
 __screenshots__/
+
+# -----------------------
+# .NET specific
+bin/
+obj/
+*.user
+*.suo
+*.dotCover
+*.ncrunch*
+*.resharper
