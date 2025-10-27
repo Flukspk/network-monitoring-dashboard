@@ -1,0 +1,9 @@
+FROM node:20-alpine
+
+WORKDIR /usr/src/agent
+
+COPY agent/ ./
+
+RUN npm install axios ping
+
+CMD ["node", "pingAgent.js"]
