@@ -6,14 +6,37 @@ services:
       dockerfile: Dockerfile.backend
     container_name: monitoring-backend
     ports:
-      - "5000:5000"
+      - "5001:5000"
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db
+      - DB_USER=spkz14
+      - DB_PASSWORD=123456za
+      - DB_NAME=monitoring
     restart: always
 
-  agent:
+  ping-agent:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    container_name: monitoring-agent
+    container_name: ping-agent
     depends_on:
       - backend
     restart: always
+
+  db:
+    image: postgres:15-alpine
+    container_name: monitoring-db
+    environment:
+      POSTGRES_USER: spkz14
+      POSTGRES_PASSWORD: 123456za
+      POSTGRES_DB: monitoring
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:
