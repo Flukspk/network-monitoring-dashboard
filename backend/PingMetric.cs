@@ -10,6 +10,6 @@ namespace Backend.Models
         public float LatencyMs { get; set; }
         public float PacketLoss { get; set; }
         public float ResponseTimeMs { get; set; }
-        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 }

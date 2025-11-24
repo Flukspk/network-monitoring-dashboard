@@ -1,0 +1,15 @@
+.git
+node_modules
+dist
+frontend/node_modules
+npm-debug.log
+Dockerfile.frontend
+Dockerfile.agent
+docker-compose.yml
+backend/bin
+backend/obj
+NetworkAgent
+NetworkAgent/bin
+NetworkAgent/obj
+agent/node_modules
+

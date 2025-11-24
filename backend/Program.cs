@@ -22,6 +22,23 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<BackendDbContext>();
+    db.Database.Migrate();
+
+    if (!db.Users.Any(u => u.Username == "Intouch@gmail.com"))
+    {
+        db.Users.Add(new User
+        {
+            Username = "Intouch@gmail.com",
+            Password = "123456",
+            RoleId = 1,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
+}
 
 app.UseCors("AllowAll");
 
