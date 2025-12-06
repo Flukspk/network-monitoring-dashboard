@@ -17,20 +17,51 @@ services:
     ports:
       - "5050:5000"
     environment:
-      - ASPNETCORE_URLS=http://+:5000
+      # บังคับให้ฟังที่ 0.0.0.0 (IPv4) พอร์ต 5000 เพื่อให้ Container อื่นมองเห็น
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=monitoring;Username=spkz14;Password=123456za
     depends_on:
       - db
 
-  agent:
+  # 🔴 Agent 1: PING
+  agent-ping:
     build:
       context: .
       dockerfile: Dockerfile.agent
+    restart: always
+    environment:
+      - DOTNET_RunningInContainer=true
+      - AGENT_NAME=Ping Agent (Agent 1)
+      - AGENT_MODE=PING
     depends_on:
       - backend
-    restart: unless-stopped
-    # ไม่ต้องระบุ command ให้ target ตอน start
-    entrypoint: ["dotnet", "NetworkAgent.dll"]
+
+  # 🟢 Agent 2: HTTP
+  agent-http:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    restart: always
+    environment:
+      - DOTNET_RunningInContainer=true
+      - AGENT_NAME=HTTP Agent (Agent 2)
+      - AGENT_MODE=HTTP
+    depends_on:
+      - backend
+
+  # 🔵 Agent 3: TRACEROUTE
+  agent-trace:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    restart: always
+    user: root 
+    environment:
+      - DOTNET_RunningInContainer=true
+      - AGENT_NAME=Trace Agent (Agent 3)
+      - AGENT_MODE=TRACEROUTE
+    depends_on:
+      - backend
 
   db:
     image: postgres:15-alpine

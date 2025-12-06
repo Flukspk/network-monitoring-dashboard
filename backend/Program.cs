@@ -1,20 +1,24 @@
 using Backend.Data;
 using Backend.Models;
 using Microsoft.EntityFrameworkCore;
-using System; // เพิ่มสำหรับ Console และ Thread
+using System;
 using System.Linq;
+using Microsoft.AspNetCore.Hosting; // จำเป็นสำหรับ UseUrls
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. [สำคัญมาก] ต้องเพิ่มบรรทัดนี้ เพื่อให้ระบบรู้จัก MetricsController ที่เราสร้างไว้
+// 🔥 FIX 1: บังคับให้ Kestrel ฟังที่ IP 0.0.0.0 พอร์ต 5000 (สำคัญมากสำหรับ Docker)
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+// 1. Add Controllers
 builder.Services.AddControllers();
 
-// PostgreSQL connection
+// 2. Database Connection
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<BackendDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Add CORS policy
+// 3. CORS (อนุญาตให้ Frontend เข้าถึงได้)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -27,7 +31,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// 2. [แนะนำ] เพิ่มระบบ Retry Migration (กัน Database Error ตอนเริ่ม Docker)
+// 4. Auto Migration & Seeding (ระบบสร้างตารางอัตโนมัติพร้อม Retry)
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -42,7 +46,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("Attempting database migration...");
             db.Database.Migrate();
 
-            // Seeding User (โค้ดเดิมของคุณ)
+            // สร้าง User เริ่มต้นถ้ายังไม่มี
             if (!db.Users.Any(u => u.Username == "Intouch@gmail.com"))
             {
                 db.Users.Add(new User
@@ -57,26 +61,27 @@ using (var scope = app.Services.CreateScope())
             }
             
             logger.LogInformation("Database migration completed successfully.");
-            break; // ทำสำเร็จก็ออกจาก Loop
+            break; 
         }
         catch (Exception ex)
         {
             retries--;
             logger.LogWarning($"Migration failed: {ex.Message}. Waiting 3 seconds... ({retries} retries left)");
-            System.Threading.Thread.Sleep(3000); // รอ 3 วินาทีแล้วลองใหม่
+            System.Threading.Thread.Sleep(3000); 
         }
     }
 }
 
-app.UseCors("AllowAll");
+// 🔥 FIX 2: ปิด HTTPS Redirection (เพราะใน Docker เราใช้ HTTP ธรรมดา)
+// app.UseHttpsRedirection(); 
 
-// 3. [สำคัญมาก] สั่งให้ระบบใช้งาน Controllers (MetricsController จะเริ่มทำงานตรงนี้)
+app.UseCors("AllowAll");
 app.MapControllers();
 
-// Test route for browser
+// Route สำหรับทดสอบว่า Backend ทำงานอยู่ไหม
 app.MapGet("/", () => "Backend is running!");
 
-// Login endpoint (อันเดิมของคุณ - ใช้ร่วมกันได้ไม่มีปัญหา)
+// Login endpoint
 app.MapPost("/api/auth/login", async (BackendDbContext db, UserLoginDto login) =>
 {
     var user = await db.Users.FirstOrDefaultAsync(u => u.Username == login.Username && u.Password == login.Password);
@@ -95,4 +100,5 @@ app.MapPost("/api/auth/login", async (BackendDbContext db, UserLoginDto login) =
 
 app.Run();
 
+// DTO สำหรับ Login
 public record UserLoginDto(string Username, string Password);
