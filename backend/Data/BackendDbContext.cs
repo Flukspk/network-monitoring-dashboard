@@ -1,18 +1,18 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.Models;
 
-namespace Backend.Data // หรือ namespace ที่คุณใช้อยู่
+namespace Backend.Data
 {
     public class BackendDbContext : DbContext
     {
         public BackendDbContext(DbContextOptions<BackendDbContext> options) : base(options) { }
 
-        // --- ส่วนที่หายไป: ต้องเพิ่มบรรทัดนี้ครับ ---
-        public DbSet<PingMetric> PingMetrics { get; set; } 
-        // ----------------------------------------
+        public DbSet<User> Users { get; set; }
         
-        // ถ้ามีตาราง User ด้วย ก็ต้องมีบรรทัดนี้
-        public DbSet<User> Users { get; set; } 
+
+        public DbSet<NetworkMetric> NetworkMetrics { get; set; }
+
+        public DbSet<Agent> Agents { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
     }
 }
