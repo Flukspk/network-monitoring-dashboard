@@ -1,5 +1,5 @@
-bin
-obj
-*.user
-*.swp
-
+bin/
+obj/
+.git/
+.vscode/
+Dockerfile

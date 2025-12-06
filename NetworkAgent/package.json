@@ -1,0 +1,9 @@
+{
+    "name": "network-agent",
+    "version": "1.0.0",
+    "dependencies": {
+      "ping": "^0.4.0",
+      "axios": "^1.5.0"
+    }
+  }
+  

@@ -13,7 +13,7 @@ namespace backend.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "ping_metrics",
+                name: "PingMetrics",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "integer", nullable: false)
@@ -23,15 +23,18 @@ namespace backend.Migrations
                     LatencyMs = table.Column<float>(type: "real", nullable: false),
                     PacketLoss = table.Column<float>(type: "real", nullable: false),
                     ResponseTimeMs = table.Column<float>(type: "real", nullable: false),
-                    Timestamp = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    Timestamp = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Extra = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    Message = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_ping_metrics", x => x.Id);
+                    table.PrimaryKey("PK_PingMetrics", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
-                name: "users",
+                name: "Users",
                 columns: table => new
                 {
                     UserId = table.Column<int>(type: "integer", nullable: false)
@@ -43,29 +46,18 @@ namespace backend.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_users", x => x.UserId);
+                    table.PrimaryKey("PK_Users", x => x.UserId);
                 });
-
-            migrationBuilder.InsertData(
-                table: "users",
-                columns: new[] { "UserId", "CreatedAt", "Password", "RoleId", "Username" },
-                values: new object[] { 1, new DateTime(2025, 10, 28, 0, 0, 0, 0, DateTimeKind.Utc), "1234", 1, "fluk" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_users_Username",
-                table: "users",
-                column: "Username",
-                unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "ping_metrics");
+                name: "PingMetrics");
 
             migrationBuilder.DropTable(
-                name: "users");
+                name: "Users");
         }
     }
 }

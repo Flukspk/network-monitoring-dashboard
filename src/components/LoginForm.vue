@@ -17,7 +17,7 @@
           v-model="email"
           class="input-field"
           type="text"
-          placeholder="fluk"
+          placeholder="fluk@gmail.com"
           required
           autocomplete="username"
         />
@@ -32,6 +32,11 @@
           required
           autocomplete="current-password"
         />
+
+        <!-- Custom Modal/Message Box for Status Messages -->
+        <div v-if="message" :class="['message-box', messageType]">
+          {{ message }}
+        </div>
 
         <button class="btn-primary submit-btn" type="submit">Log in</button>
       </form>
@@ -60,12 +65,25 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const email = ref("");
 const password = ref("");
+const message = ref("");
+const messageType = ref("");
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5162";
+// CRITICAL FIX: Set the default API port to 5001, as exposed by Docker.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+
+function showMessage(type, text) {
+    messageType.value = type;
+    message.value = text;
+    setTimeout(() => {
+        message.value = "";
+    }, 4000);
+}
 
 async function onSubmit() {
+  message.value = ""; // Clear previous messages
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    // FIX HERE: Changed from `/api/auth/login` to `/auth/login` to resolve the 404 double-path error.
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ Username: email.value, Password: password.value }),
@@ -76,13 +94,16 @@ async function onSubmit() {
       localStorage.setItem("user", JSON.stringify(data));
       router.push("/dashboard");
     } else if (response.status === 401) {
-      alert("Invalid username or password.");
+      // Login failed due to invalid credentials
+      showMessage("error", "Login failed. Invalid username or password.");
     } else {
-      alert("Login failed. Please try again later.");
+      // Other server errors (e.g., 500)
+      showMessage("error", "Login failed. Please try again later (Status: " + response.status + ").");
     }
   } catch (err) {
     console.error("Error logging in:", err);
-    alert("Error connecting to server.");
+    // Error connecting to the API_BASE_URL (i.e., Docker is not running or port is wrong)
+    showMessage("error", "Error connecting to server. Check if Docker is running on port 5001.");
   }
 }
 
@@ -92,6 +113,7 @@ function continueWithoutAuth() {
 </script>
 
 <style scoped>
+/* Existing styles... */
 .login-page {
   min-height: 100vh;
   padding: 64px clamp(20px, 6vw, 120px);
@@ -196,6 +218,21 @@ function continueWithoutAuth() {
 .skip-btn {
   width: 100%;
   margin-top: 12px;
+}
+
+/* New styles for message box */
+.message-box {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    margin-top: -8px;
+    text-align: center;
+}
+
+.message-box.error {
+    background-color: #440000;
+    color: #ffaaaa;
+    border: 1px solid #770000;
 }
 
 @media (max-width: 640px) {

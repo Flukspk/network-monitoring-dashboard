@@ -5,42 +5,35 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-      args:
-        VITE_API_URL: /api
-    container_name: monitoring-frontend
     ports:
       - "8080:80"
     depends_on:
       - backend
-    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: monitoring-backend
     ports:
-      - "5001:5000"
+      - "5050:5000"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:5000
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=monitoring;Username=spkz14;Password=123456za
     depends_on:
       - db
-    restart: unless-stopped
 
   agent:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    container_name: monitoring-agent
     depends_on:
       - backend
     restart: unless-stopped
+    # ไม่ต้องระบุ command ให้ target ตอน start
+    entrypoint: ["dotnet", "NetworkAgent.dll"]
 
   db:
     image: postgres:15-alpine
-    container_name: monitoring-db
     environment:
       POSTGRES_USER: spkz14
       POSTGRES_PASSWORD: 123456za
@@ -49,7 +42,6 @@ services:
       - "15432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
 
 volumes:
   pgdata:

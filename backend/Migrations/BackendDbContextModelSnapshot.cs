@@ -30,14 +30,26 @@ namespace backend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Extra")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<float>("LatencyMs")
                         .HasColumnType("real");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<float>("PacketLoss")
                         .HasColumnType("real");
 
                     b.Property<float>("ResponseTimeMs")
                         .HasColumnType("real");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Target")
                         .IsRequired()
@@ -52,7 +64,7 @@ namespace backend.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ping_metrics", (string)null);
+                    b.ToTable("PingMetrics");
                 });
 
             modelBuilder.Entity("Backend.Models.User", b =>
@@ -79,20 +91,7 @@ namespace backend.Migrations
 
                     b.HasKey("UserId");
 
-                    b.HasIndex("Username")
-                        .IsUnique();
-
-                    b.ToTable("users", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            UserId = 1,
-                            CreatedAt = new DateTime(2025, 10, 28, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Password = "1234",
-                            RoleId = 1,
-                            Username = "fluk"
-                        });
+                    b.ToTable("Users");
                 });
 #pragma warning restore 612, 618
         }

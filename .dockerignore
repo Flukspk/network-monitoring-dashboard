@@ -8,8 +8,6 @@ Dockerfile.agent
 docker-compose.yml
 backend/bin
 backend/obj
-NetworkAgent
-NetworkAgent/bin
 NetworkAgent/obj
+!NetworkAgent/bin/Release/net9.0/publish
 agent/node_modules
-
