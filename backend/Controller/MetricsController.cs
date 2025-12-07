@@ -74,10 +74,11 @@ public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] 
 {
     var query = _context.NetworkMetrics.AsQueryable();
 
-    // เช็ค null ก่อนใช้
+    // เช็ค null ก่อนใช้ และ trim whitespace
     if (!string.IsNullOrEmpty(target))
     {
-        query = query.Where(m => m.Target == target);
+        var trimmedTarget = target.Trim();
+        query = query.Where(m => m.Target.Trim() == trimmedTarget);
     }
 
     if (!string.IsNullOrEmpty(type))
@@ -90,6 +91,7 @@ public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] 
         .Take(20)
         .ToList();
         
+    _logger.LogInformation($"Filtered metrics: target={target}, type={type}, count={data.Count}");
     return Ok(data);
         }
     }
