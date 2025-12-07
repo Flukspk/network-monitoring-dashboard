@@ -63,19 +63,13 @@ namespace backend.Migrations
 
                     b.Property<string>("ExtraData")
                         .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<float>("LatencyMs")
-                        .HasColumnType("real");
+                        .HasColumnType("text");
 
                     b.Property<string>("MetricType")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<float>("PacketLoss")
-                        .HasColumnType("real");
-
-                    b.Property<float>("ResponseTimeMs")
                         .HasColumnType("real");
 
                     b.Property<string>("Status")

@@ -2,293 +2,426 @@
   <div class="page-shell">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Lab testing</p>
-        <h1>Scenario validation</h1>
-        <p class="text-muted">
-          Run synthetic flows and capture baselines before promoting config changes to the live
-          dashboard.
-        </p>
+        <p class="eyebrow">Real-time Monitor</p>
+        <h1>Agent Live Graph</h1>
+        <p class="text-muted">Monitor latency from your 3 agents.</p>
       </div>
-      <button class="btn-primary" @click="showPopup = true">New test run</button>
+      <div class="header-actions">
+        <button
+          class="btn-primary"
+          @click="toggleMonitoring"
+          :class="{ 'btn-danger': isMonitoring }"
+        >
+          {{ isMonitoring ? "Stop Monitoring" : "Start Monitoring" }}
+        </button>
+      </div>
     </header>
 
-    <div v-if="showPopup" class="modal-backdrop">
-      <div class="modal">
-        <h3>Run Test</h3>
-        
-        <div class="form-group">
-          <label>Choose Agent:</label>
-          <select v-model="selectedAgent">
-            <option v-for="agent in agents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Target:</label>
-          <input v-model="newTarget" placeholder="e.g. https://google.com" @keyup.enter="confirmRun" />
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn-ghost" @click="showPopup = false">Cancel</button>
-          <button class="btn-primary" @click="confirmRun" :disabled="loading">
-            {{ loading ? 'Running...' : 'Run Test' }}
-          </button>
+    <div v-if="!isMonitoring" class="panel config-panel">
+      <div class="form-group">
+        <label>Select Agent:</label>
+        <select v-model="selectedAgentMode">
+          <option value="PING">Agent 1 (Ping)</option>
+          <option value="HTTP">Agent 2 (HTTP)</option>
+          <option value="TRACEROUTE">Agent 3 (Trace)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Target:</label>
+        <input
+          v-model="targetUrl"
+          placeholder="e.g. 8.8.8.8, 1.1.1.1, google.com, or https://www.github.com"
+        />
+        <div class="target-examples">
+          <small
+            >Examples:
+            <span class="example-link" @click="targetUrl = '1.1.1.1'"
+              >1.1.1.1</span
+            >,
+            <span class="example-link" @click="targetUrl = 'google.com'"
+              >google.com</span
+            >,
+            <span
+              class="example-link"
+              @click="targetUrl = 'https://www.github.com'"
+              >https://www.github.com</span
+            >
+          </small>
         </div>
       </div>
     </div>
 
-    <section class="grid-auto-fit">
-      <article class="panel test-card" v-for="(suite, index) in testSuites" :key="index">
+    <section v-else class="monitor-section">
+      <div class="panel graph-panel">
         <div class="card-head">
-          <h3>{{ suite.name }}</h3>
-          <span class="pill soft-pill">
-            <span class="status-dot" :class="suite.statusClass"></span>
-            {{ suite.status }}
-          </span>
+          <h3>Latency: {{ targetUrl }}</h3>
+          <span class="pill soft-pill status-success">Live update</span>
         </div>
-        <p class="text-muted">{{ suite.description }}</p>
-        <p class="text-muted" style="font-size: 0.8em; margin-top: 5px;">Time: {{ suite.latency }}</p>
-        <div class="card-footer">
-          <span>Last run · {{ suite.lastRun }}</span>
-          <button class="btn-ghost compact" @click="viewLog(suite)">View log</button>
+        <div class="canvas-wrapper">
+          <canvas ref="chartCanvas" width="800" height="300"></canvas>
         </div>
-      </article>
+        <div class="graph-legend">
+          <span>Min: {{ minVal }}ms</span>
+          <span>Max: {{ maxVal }}ms</span>
+        </div>
+      </div>
 
-      <div v-if="testSuites.length === 0" class="empty-state">
-        <p class="text-muted">No test runs yet. Click "New test run" to start.</p>
+      <div class="panel table-panel">
+        <h4>Recent Logs</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Value</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(log, i) in logs" :key="i">
+              <td>{{ log.time }}</td>
+              <td>{{ log.value }} ms</td>
+              <td :class="log.status === 'Success' ? 'text-green' : 'text-red'">
+                {{ log.status }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import axios from 'axios'
+import { ref, onUnmounted, nextTick } from "vue";
+import axios from "axios";
 
-// เปลี่ยน Port เป็น 5050 (หนี AirPlay)
-const API_URL = 'http://localhost:5050/api/agent/run'
+// State
+const isMonitoring = ref(false);
+const selectedAgentMode = ref("PING");
+const targetUrl = ref("");
+const logs = ref([]);
+const dataPoints = ref(Array.from({ length: 20 }, () => 0)); // กราฟเริ่มต้น
+const timer = ref(null);
+const chartCanvas = ref(null);
+const maxVal = ref(100);
+const minVal = ref(0);
+const isRunningTest = ref(false);
+// Use relative path for Docker (nginx proxy) or absolute for local dev
+// In Docker, nginx proxies /api/* to backend, so use relative path
+// For local dev, use the backend port directly
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // If running on port 8080 (Docker) or not localhost, use relative path
+  if (
+    window.location.port === "8080" ||
+    window.location.hostname !== "localhost"
+  ) {
+    return "/api";
+  }
+  // Local dev - use direct backend port
+  return "http://localhost:5050";
+};
+const API_BASE_URL = getApiBaseUrl();
 
-const testSuites = ref([])
-const showPopup = ref(false)
-const loading = ref(false)
-const newTarget = ref('')
-const agents = ref([
-  { id: 'agent-core', name: 'Agent1' },
-  { id: 'agent-backup', name: 'Agent2' }
-])
-const selectedAgent = ref(agents.value[0].id)
-
-function viewLog(suite) {
-  alert(`Detailed Log:\nTarget: ${suite.name}\nResult: ${suite.status}\nLatency: ${suite.latency}\nTime: ${suite.lastRun}`)
-}
-
-async function confirmRun() {
-  if (!newTarget.value) return alert('Please enter a target')
-  
-  loading.value = true; // เริ่มหมุนติ้วๆ
-
-  try {
-    // ยิงไป Backend
-    const res = await axios.post(API_URL, {
-      agentId: selectedAgent.value,
-      target: newTarget.value
-    })
-
-    const data = res.data;
-
-    // สร้าง Object ผลลัพธ์ใหม่
-    const newResult = {
-      name: data.target,
-      description: data.message,
-      status: data.status,
-      statusClass: data.status === 'Success' ? 'status-success' : 'status-warning', // สีเขียว/เหลือง
-      latency: data.latency,
-      lastRun: new Date(data.timestamp).toLocaleTimeString()
+// Toggle Function
+const toggleMonitoring = () => {
+  isMonitoring.value = !isMonitoring.value;
+  if (isMonitoring.value) {
+    // Check if target is provided
+    if (!targetUrl.value.trim()) {
+      alert("Please enter a target before starting monitoring");
+      isMonitoring.value = false;
+      return;
     }
 
-    // .unshift คือเอาไปแทรกไว้บนสุดของ Array (อันใหม่สุดอยู่บน)
-    testSuites.value.unshift(newResult)
-    
-    // ปิด Popup และเคลียร์ค่า
-    showPopup.value = false
-    newTarget.value = ''
+    logs.value = [];
+    dataPoints.value = Array.from({ length: 20 }, () => 0);
 
-  } catch (err) {
-    console.error(err)
-    alert('Failed to run test. Check Backend connection.')
-  } finally {
-    loading.value = false; // หยุดหมุน
+    // Run test immediately, then every 5 seconds
+    runTestAndUpdate();
+    timer.value = setInterval(runTestAndUpdate, 5000); // Run test every 5 seconds
+  } else {
+    clearInterval(timer.value);
+    timer.value = null;
   }
-}
+};
+
+// Run Test and Update Display
+const runTestAndUpdate = async () => {
+  if (!targetUrl.value.trim()) {
+    console.warn("No target specified, skipping test");
+    return;
+  }
+
+  isRunningTest.value = true;
+
+  try {
+    // เรียก API เพื่อรัน test
+    const apiEndpoint = API_BASE_URL.startsWith("/")
+      ? `${API_BASE_URL}/agent/run`
+      : `${API_BASE_URL}/api/agent/run`;
+
+    const res = await axios.post(apiEndpoint, {
+      AgentId: selectedAgentMode.value,
+      Target: targetUrl.value,
+      MetricType: selectedAgentMode.value,
+    });
+
+    // Wait a moment for database to be ready, then fetch and update display
+    setTimeout(() => {
+      fetchData();
+    }, 800);
+  } catch (err) {
+    console.error("Test error:", err);
+    // Still try to fetch data in case previous tests succeeded
+    setTimeout(() => {
+      fetchData();
+    }, 800);
+  } finally {
+    isRunningTest.value = false;
+  }
+};
+
+// Fetch Data
+const fetchData = async () => {
+  try {
+    // เรียก API
+    // ถ้า API_BASE_URL เป็น /api แล้ว ไม่ต้องเพิ่ม /api อีก
+    const apiEndpoint = API_BASE_URL.startsWith("/")
+      ? `${API_BASE_URL}/metrics/filter?target=${encodeURIComponent(
+          targetUrl.value
+        )}&type=${selectedAgentMode.value}`
+      : `${API_BASE_URL}/api/metrics/filter?target=${encodeURIComponent(
+          targetUrl.value
+        )}&type=${selectedAgentMode.value}`;
+
+    console.log("Fetching data from:", apiEndpoint);
+    const res = await axios.get(apiEndpoint);
+    console.log("Fetched data:", res.data);
+
+    // ข้อมูลจาก Backend เรียงจาก ใหม่ -> เก่า (ล่าสุดอยู่ตัวแรก)
+    // เราเช็คก่อนว่ามีข้อมูลไหม
+    if (res.data && res.data.length > 0) {
+      const latestData = res.data[0];
+      const timeStr = new Date(latestData.timestamp).toLocaleTimeString();
+
+      // ถ้าเป็นข้อมูลใหม่ (เทียบเวลา) หรือเป็นข้อมูลแรก
+      if (
+        logs.value.length === 0 ||
+        logs.value[0].timestamp !== latestData.timestamp
+      ) {
+        // 1. เติม Log
+        logs.value.unshift({
+          time: timeStr,
+          value: latestData.value,
+          status: latestData.status,
+          timestamp: latestData.timestamp,
+        });
+
+        // 2. อัปเดตกราฟ (เอาตัวเก่าออกซ้ายสุด, เอาตัวใหม่เข้าขวาสุด)
+        dataPoints.value.shift();
+        dataPoints.value.push(latestData.value);
+
+        // 3. วาดกราฟ
+        await nextTick();
+        drawGraph();
+      }
+    }
+  } catch (err) {
+    console.error("Fetch error:", err);
+  }
+};
+
+// Draw Graph (Canvas Logic)
+const drawGraph = () => {
+  const canvas = chartCanvas.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const data = dataPoints.value;
+
+  ctx.clearRect(0, 0, width, height);
+
+  // คำนวณสเกลแกน Y (ให้กราฟยืดหยุ่นตามข้อมูลจริง)
+  const max = Math.max(...data, 50) * 1.2;
+  maxVal.value = Math.round(max);
+
+  ctx.beginPath();
+  ctx.strokeStyle = "#00f2ff";
+  ctx.lineWidth = 2;
+
+  const stepX = width / (data.length - 1);
+
+  data.forEach((val, index) => {
+    const x = index * stepX;
+    // กลับด้าน Y (ค่ามากอยู่บน)
+    const y = height - (val / max) * height;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+
+  // เพิ่มเงาใต้กราฟ (Optional)
+  ctx.lineTo(width, height);
+  ctx.lineTo(0, height);
+  ctx.fillStyle = "rgba(0, 242, 255, 0.1)";
+  ctx.fill();
+};
+
+onUnmounted(() => clearInterval(timer.value));
 </script>
 
 <style scoped>
 .page-shell {
   padding: 40px;
+  color: white;
 }
 .page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 40px;
-}
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 12px;
-  color: #8b949e;
-  margin-bottom: 8px;
-}
-h1 {
-  font-size: 32px;
-  margin: 0 0 8px 0;
-}
-.grid-auto-fit {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-}
-
-/* Modal Styles (Dark Mode Theme) */
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7); /* พื้นหลังมืดลง */
-  backdrop-filter: blur(2px);
-  display: flex;
-  justify-content: center;
   align-items: center;
-  z-index: 999;
+  justify-content: space-between;
+  margin-bottom: 24px;
 }
-
-.modal {
-  background: #161b22; /* สีเทาเข้มเหมือน GitHub Dark */
-  color: white;
-  padding: 24px;
-  border-radius: 12px;
-  width: 350px;
+.header-actions {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  border: 1px solid #30363d;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-}
-
-.modal h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-label {
-  font-size: 13px;
-  color: #8b949e;
-}
-
-/* Input & Select สไตล์ Dark Mode */
-input, select {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  color: white;
-  padding: 8px 12px;
-  border-radius: 6px;
-  outline: none;
-}
-
-input:focus, select:focus {
-  border-color: #58a6ff;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  margin-top: 8px;
 }
-
-/* Card Styles */
 .panel {
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 8px;
   padding: 20px;
-  display: flex;
-  flex-direction: column;
+  margin-bottom: 20px;
 }
-.card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.card-head h3 {
-  margin: 0;
-  font-size: 16px;
-}
-.card-footer {
-  margin-top: auto;
-  padding-top: 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: #8b949e;
-}
-
-/* Utilities */
-.text-muted { color: #8b949e; }
 .btn-primary {
   background: #238636;
   color: white;
   border: none;
-  padding: 6px 16px;
+  padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 600;
+  transition: all 0.2s ease;
 }
-.btn-primary:hover { background: #2ea043; }
-.btn-primary:disabled { background: #238636; opacity: 0.5; cursor: not-allowed; }
-
-.btn-ghost {
-  background: transparent;
-  color: #58a6ff;
-  border: none;
-  cursor: pointer;
+.btn-primary:hover:not(:disabled) {
+  background: #2ea043;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
 }
-.btn-ghost:hover { text-decoration: underline; }
-
-.pill {
-  padding: 2px 8px;
-  border-radius: 12px;
+.run-test-btn {
+  background: linear-gradient(120deg, #238636, #2ea043) !important;
+}
+.run-test-btn:hover:not(:disabled) {
+  background: linear-gradient(120deg, #2ea043, #3fb950) !important;
+  box-shadow: 0 6px 20px rgba(35, 134, 54, 0.4);
+}
+.btn-danger {
+  background: #da3633;
+}
+input,
+select {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: white;
+  padding: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+.form-group {
+  margin-bottom: 16px;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #9ba4c4;
+}
+.test-result {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.test-result.success {
+  background: rgba(65, 218, 187, 0.15);
+  color: #41dabb;
+  border: 1px solid rgba(65, 218, 187, 0.3);
+}
+.test-result.error {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+.test-result-panel {
+  margin-bottom: 20px;
+  padding: 16px;
+}
+.test-result-panel.success {
+  background: rgba(65, 218, 187, 0.15);
+  color: #41dabb;
+  border: 1px solid rgba(65, 218, 187, 0.3);
+}
+.test-result-panel.error {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.target-examples {
+  margin-top: 8px;
+  color: #9ba4c4;
   font-size: 12px;
-  border: 1px solid;
+}
+.example-link {
+  color: #4da5dd;
+  cursor: pointer;
+  text-decoration: underline;
+  margin: 0 4px;
+}
+.example-link:hover {
+  color: #62d6ff;
+}
+.canvas-wrapper {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px;
+}
+canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+}
+th,
+td {
+  padding: 8px;
+  border-bottom: 1px solid #30363d;
+  text-align: left;
+}
+.text-green {
+  color: #3fb950;
+}
+.text-red {
+  color: #f85149;
+}
+.graph-legend {
   display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.status-success { background: #238636; border-color: #238636; color: #3fb950; }
-.status-warning { background: #9e6a03; border-color: #9e6a03; color: #d29922; }
-.status-dot.status-success { background: #3fb950; }
-.status-dot.status-warning { background: #d29922; }
-
-.empty-state {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 40px;
-  border: 1px dashed #30363d;
-  border-radius: 8px;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: #8b949e;
+  margin-top: 5px;
 }
 </style>

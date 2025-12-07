@@ -7,14 +7,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace backend.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateSchemaV2 : Migration
+    public partial class FixModelAndType : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PingMetrics");
-
             migrationBuilder.CreateTable(
                 name: "Agents",
                 columns: table => new
@@ -41,17 +38,31 @@ namespace backend.Migrations
                     Target = table.Column<string>(type: "text", nullable: false),
                     MetricType = table.Column<string>(type: "text", nullable: false),
                     Value = table.Column<float>(type: "real", nullable: false),
-                    LatencyMs = table.Column<float>(type: "real", nullable: false),
-                    ResponseTimeMs = table.Column<float>(type: "real", nullable: false),
                     PacketLoss = table.Column<float>(type: "real", nullable: false),
                     StatusCode = table.Column<int>(type: "integer", nullable: true),
                     Status = table.Column<string>(type: "text", nullable: false),
-                    ExtraData = table.Column<string>(type: "jsonb", nullable: false),
+                    ExtraData = table.Column<string>(type: "text", nullable: false),
                     Timestamp = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_NetworkMetrics", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    UserId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Username = table.Column<string>(type: "text", nullable: false),
+                    Password = table.Column<string>(type: "text", nullable: false),
+                    RoleId = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.UserId);
                 });
 
             migrationBuilder.CreateTable(
@@ -95,26 +106,8 @@ namespace backend.Migrations
             migrationBuilder.DropTable(
                 name: "Notifications");
 
-            migrationBuilder.CreateTable(
-                name: "PingMetrics",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Extra = table.Column<string>(type: "text", nullable: false),
-                    LatencyMs = table.Column<float>(type: "real", nullable: false),
-                    Message = table.Column<string>(type: "text", nullable: false),
-                    PacketLoss = table.Column<float>(type: "real", nullable: false),
-                    ResponseTimeMs = table.Column<float>(type: "real", nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false),
-                    Target = table.Column<string>(type: "text", nullable: false),
-                    TargetType = table.Column<string>(type: "text", nullable: false),
-                    Timestamp = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PingMetrics", x => x.Id);
-                });
+            migrationBuilder.DropTable(
+                name: "Users");
         }
     }
 }

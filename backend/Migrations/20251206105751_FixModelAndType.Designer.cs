@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace backend.Migrations
 {
     [DbContext(typeof(BackendDbContext))]
-    [Migration("20251206085104_UpdateSchemaV2")]
-    partial class UpdateSchemaV2
+    [Migration("20251206105751_FixModelAndType")]
+    partial class FixModelAndType
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -66,19 +66,13 @@ namespace backend.Migrations
 
                     b.Property<string>("ExtraData")
                         .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<float>("LatencyMs")
-                        .HasColumnType("real");
+                        .HasColumnType("text");
 
                     b.Property<string>("MetricType")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<float>("PacketLoss")
-                        .HasColumnType("real");
-
-                    b.Property<float>("ResponseTimeMs")
                         .HasColumnType("real");
 
                     b.Property<string>("Status")
