@@ -5,6 +5,7 @@ import Dashboard from "../Dashboard.vue";
 import Testing from "../pages/Testing.vue";
 import Events from "../pages/Events.vue";
 import Alerts from "../pages/Alerts.vue";
+import Users from "../pages/Users.vue"; // ✅ 1. Import ไฟล์ Users.vue
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -17,6 +18,7 @@ const routes = [
       { path: "test", name: "Testing", component: Testing },
       { path: "event", name: "Events", component: Events },
       { path: "alert", name: "Alerts", component: Alerts },
+      { path: "users", name: "Users", component: Users }, // ✅ 2. เพิ่ม Route ตรงนี้
     ],
   },
 ];

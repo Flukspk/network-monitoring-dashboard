@@ -45,7 +45,7 @@ const navItems = [
   { path: "/test", label: "Testing", icon: "🧪", badge: "6" },
   { path: "/event", label: "Events", icon: "📅", badge: "2" },
   { path: "/alert", label: "Alerts", icon: "🚨", badge: "4" },
-  { path: "/user", label: "Users", icon: "👤" },
+  { path: "/users", label: "Users", icon: "👤" },
 ];
 
 function logout() {
