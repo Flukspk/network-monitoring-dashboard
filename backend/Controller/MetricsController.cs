@@ -4,6 +4,7 @@ using Backend.Models;
 using System.Threading.Tasks;
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 
 namespace Backend.Controllers
@@ -15,48 +16,62 @@ namespace Backend.Controllers
         private readonly BackendDbContext _context;
         private readonly ILogger<MetricsController> _logger;
 
+        // จำรายชื่อเป้าหมายที่กำลังทำงาน (อยู่ใน RAM)
+        private static HashSet<string> _activeTargets = new HashSet<string>();
+
         public MetricsController(BackendDbContext context, ILogger<MetricsController> logger)
         {
             _context = context;
             _logger = logger;
         }
 
+        // ✅ เปลี่ยนชื่อ Class รับค่าเป็น MonitorRequest (เพื่อหนี Error ชื่อซ้ำ)
+        [HttpPost("start")]
+        public IActionResult StartMonitoring([FromBody] MonitorRequest req)
+        {
+            if (string.IsNullOrEmpty(req.Target)) return BadRequest();
+            
+            var key = $"{req.Target}|{req.Type}";
+            _activeTargets.Add(key);
+            
+            _logger.LogInformation($"🟢 Started monitoring: {key}");
+            return Ok(new { message = "Started", current = _activeTargets });
+        }
+
+        [HttpPost("stop")]
+        public IActionResult StopMonitoring([FromBody] MonitorRequest req)
+        {
+            var key = $"{req.Target}|{req.Type}";
+            _activeTargets.Remove(key); 
+            _activeTargets.Remove(req.Target); 
+
+            _logger.LogInformation($"🔴 Stopped monitoring: {key}");
+            return Ok(new { message = "Stopped", current = _activeTargets });
+        }
+
+        [HttpGet("targets")]
+        public IActionResult GetActiveTargets()
+        {
+            var targets = _activeTargets.Select(t => {
+                var parts = t.Split('|');
+                return new { 
+                    Target = parts[0], 
+                    MetricType = parts.Length > 1 ? parts[1] : "PING" 
+                };
+            }).ToList();
+
+            return Ok(targets);
+        }
+
         [HttpPost]
         public async Task<IActionResult> PostMetric([FromBody] NetworkMetric metric) 
         {
-            // 🔍 LOG VALIDATION ERRORS
-            if (!ModelState.IsValid)
-            {
-                var errors = string.Join("; ", ModelState.Values
-                    .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage));
-                
-                _logger.LogError($"❌ BAD REQUEST: {errors}");
-                return BadRequest(new { error = "Invalid Model", details = errors });
-            }
-
-            if (metric == null) 
-            {
-                _logger.LogError("❌ Metric object is NULL");
-                return BadRequest("Metric is null");
-            }
-
-            if (metric.Timestamp == default) 
-            {
-                metric.Timestamp = DateTime.UtcNow;
-            }
+            if (metric == null) return BadRequest("Metric is null");
+            if (metric.Timestamp == default) metric.Timestamp = DateTime.UtcNow;
             
-            try 
-            {
-                _context.NetworkMetrics.Add(metric); 
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "Data saved" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ DATABASE ERROR: {ex.Message}");
-                return StatusCode(500, "Database error");
-            }
+            _context.NetworkMetrics.Add(metric); 
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Data saved" });
         }
 
         [HttpGet("latest")]
@@ -69,30 +84,22 @@ namespace Backend.Controllers
             return Ok(latest);
         }
 
-[HttpGet("filter")]
-public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] string? type)
-{
-    var query = _context.NetworkMetrics.AsQueryable();
+        [HttpGet("filter")]
+        public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] string? type)
+        {
+            var query = _context.NetworkMetrics.AsQueryable();
+            if (!string.IsNullOrEmpty(target)) query = query.Where(m => m.Target == target);
+            if (!string.IsNullOrEmpty(type)) query = query.Where(m => m.MetricType == type);
 
-    // เช็ค null ก่อนใช้ และ trim whitespace
-    if (!string.IsNullOrEmpty(target))
-    {
-        var trimmedTarget = target.Trim();
-        query = query.Where(m => m.Target.Trim() == trimmedTarget);
-    }
-
-    if (!string.IsNullOrEmpty(type))
-    {
-        query = query.Where(m => m.MetricType == type);
-    }
-
-    var data = query
-        .OrderByDescending(m => m.Timestamp)
-        .Take(20)
-        .ToList();
-        
-    _logger.LogInformation($"Filtered metrics: target={target}, type={type}, count={data.Count}");
-    return Ok(data);
+            var data = query.OrderByDescending(m => m.Timestamp).Take(20).ToList();
+            return Ok(data);
         }
+    }
+
+    // ✅ ชื่อคลาสใหม่ (MonitorRequest) ไม่ซ้ำใครแน่นอน
+    public class MonitorRequest
+    {
+        public string Target { get; set; }
+        public string Type { get; set; }
     }
 }

@@ -55,7 +55,7 @@ services:
       context: .
       dockerfile: Dockerfile.agent
     restart: always
-    user: root 
+    user: root
     environment:
       - DOTNET_RunningInContainer=true
       - AGENT_NAME=Trace Agent (Agent 3)

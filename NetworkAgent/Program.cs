@@ -13,24 +13,24 @@ builder.Services.AddHttpClient();
 var host = builder.Build();
 host.Run();
 
-// --- Models (แก้ให้ตรงกับ Backend เป๊ะๆ) ---
+// --- Models ---
 public class NetworkMetric
 {
     public string Target { get; set; } = string.Empty;
     public string MetricType { get; set; } = "PING"; 
-    
-    // ✅ ใช้ Value ตัวเดียว (รวม Latency/ResponseTime)
     public float Value { get; set; } 
-    
     public float PacketLoss { get; set; }
     public int? StatusCode { get; set; }
     public string Status { get; set; } = "Success";
-    
-    // ✅ ส่งเป็น JSON String
     public string ExtraData { get; set; } = "{}";
-    
-    // ✅ ต้องมี Timestamp
     public DateTime Timestamp { get; set; } = DateTime.UtcNow; 
+}
+
+// ✅ Class ใหม่: เอาไว้รับรายชื่อ Target ที่ Backend ส่งมา
+public class TargetConfig 
+{
+    public string Target { get; set; }
+    public string MetricType { get; set; }
 }
 
 public class Worker : BackgroundService
@@ -38,8 +38,9 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly HttpClient _httpClient;
     
-    // URL Backend (พอร์ต 5000)
     private const string BackendUrl = "http://backend:5000/api/metrics"; 
+    // ✅ URL ใหม่: เรียกไปที่ MetricsController เดิม แต่ขอ list targets
+    private const string TargetApiUrl = "http://backend:5000/api/metrics/targets"; 
 
     private readonly string AgentName = Environment.GetEnvironmentVariable("AGENT_NAME") ?? "Unknown-Agent";
     private readonly string AgentMode = Environment.GetEnvironmentVariable("AGENT_MODE") ?? "ALL"; 
@@ -52,48 +53,46 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // รายการเป้าหมาย
-        var pingTargets = new[] { "8.8.8.8", "1.1.1.1" };
-        var httpTargets = new[] { "https://www.google.com", "https://www.github.com" };
-        var traceTargets = new[] { "8.8.8.8" };
-
-        _logger.LogInformation($"{AgentName} started in [{AgentMode}] mode.");
+        _logger.LogInformation($"{AgentName} started. Waiting for targets from Web History...");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try 
             {
-                // 🔴 Agent 1: PING ONLY
-                if (AgentMode == "PING" || AgentMode == "ALL")
+                // 1. 🔄 วิ่งไปถาม Backend ว่า "มีอะไรให้ทำบ้าง?"
+                List<TargetConfig> targets = new();
+                try 
                 {
-                    foreach (var target in pingTargets)
+                    targets = await _httpClient.GetFromJsonAsync<List<TargetConfig>>(TargetApiUrl) ?? new();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Could not fetch targets: {ex.Message}. Using existing DB data next time.");
+                }
+
+                if (targets.Count > 0)
+                {
+                    _logger.LogInformation($"Found {targets.Count} targets in history. Processing...");
+
+                    foreach (var item in targets)
                     {
-                        var metric = CreateMetric(target, "PING");
-                        await RunPing(metric);
+                        // 2. 🧹 กรองงาน: ถ้าฉันเป็น Agent PING ฉันจะไม่ทำ HTTP (ยกเว้นโหมด ALL)
+                        if (AgentMode != "ALL" && item.MetricType != AgentMode) continue;
+
+                        var metric = CreateMetric(item.Target, item.MetricType);
+
+                        // 3. 🚀 เริ่มทำงานตามประเภท
+                        if (item.MetricType == "PING") await RunPing(metric);
+                        else if (item.MetricType == "HTTP") await RunHttp(metric);
+                        else if (item.MetricType == "TRACEROUTE") await RunTraceroute(metric);
+
+                        // 4. 📨 ส่งผลลัพธ์กลับ
                         await SendData(metric);
                     }
                 }
-
-                // 🟢 Agent 2: HTTP ONLY
-                if (AgentMode == "HTTP" || AgentMode == "ALL")
+                else
                 {
-                    foreach (var target in httpTargets)
-                    {
-                        var metric = CreateMetric(target, "HTTP");
-                        await RunHttp(metric);
-                        await SendData(metric);
-                    }
-                }
-
-                // 🔵 Agent 3: TRACEROUTE ONLY
-                if (AgentMode == "TRACEROUTE" || AgentMode == "ALL")
-                {
-                    foreach (var target in traceTargets)
-                    {
-                        var metric = CreateMetric(target, "TRACEROUTE");
-                        await RunTraceroute(metric);
-                        await SendData(metric);
-                    }
+                    _logger.LogInformation("History is empty. Please run a manual test on the website first.");
                 }
             }
             catch (Exception ex)
@@ -101,11 +100,14 @@ public class Worker : BackgroundService
                 _logger.LogError($"Critical Loop Error: {ex.Message}");
             }
 
-            // รอ 10 วินาที
+            // รอ 10 วินาที ก่อนวนรอบใหม่
             await Task.Delay(10000, stoppingToken);
         }
     }
 
+    // --- (ส่วนที่เหลือ: CreateMetric, RunPing, RunHttp, RunTraceroute, SendData) ---
+    // --- ก๊อปปี้ฟังก์ชันเดิมข้างล่างมาใส่ตรงนี้ได้เลยครับ ไม่มีการเปลี่ยนแปลง ---
+    
     private NetworkMetric CreateMetric(string target, string type)
     {
         var baseInfo = new { AgentName = AgentName };
@@ -118,27 +120,20 @@ public class Worker : BackgroundService
         };
     }
 
-    // --- Logic: PING ---
     private async Task RunPing(NetworkMetric metric)
     {
         using var ping = new Ping();
         try
         {
             var reply = await ping.SendPingAsync(metric.Target);
-            // ✅ เก็บค่าลง Value
             metric.Value = reply.Status == IPStatus.Success ? reply.RoundtripTime : 0;
             metric.Status = reply.Status == IPStatus.Success ? "Success" : "Failed";
             metric.PacketLoss = reply.Status == IPStatus.Success ? 0 : 1;
             _logger.LogInformation($"[PING] {metric.Target}: {metric.Status} ({metric.Value}ms)");
         }
-        catch (Exception) 
-        { 
-            metric.Status = "Failed"; 
-            metric.PacketLoss = 1; 
-        }
+        catch (Exception) { metric.Status = "Failed"; metric.PacketLoss = 1; }
     }
 
-    // --- Logic: HTTP ---
     private async Task RunHttp(NetworkMetric metric)
     {
         var sw = Stopwatch.StartNew();
@@ -146,29 +141,21 @@ public class Worker : BackgroundService
         {
             var response = await _httpClient.GetAsync(metric.Target);
             sw.Stop();
-            // ✅ เก็บค่าลง Value
             metric.Value = sw.ElapsedMilliseconds;
             metric.StatusCode = (int)response.StatusCode;
             metric.Status = response.IsSuccessStatusCode ? "Success" : "Failed";
             _logger.LogInformation($"[HTTP] {metric.Target}: {metric.Status} ({metric.Value}ms)");
         }
-        catch (Exception) 
-        { 
-            metric.Value = 0; 
-            metric.Status = "Failed"; 
-        }
+        catch (Exception) { metric.Value = 0; metric.Status = "Failed"; }
     }
 
-    // --- Logic: TRACEROUTE ---
     private async Task RunTraceroute(NetworkMetric metric)
     {
         _logger.LogInformation($"[TRACE] Starting trace to {metric.Target}...");
         var sw = Stopwatch.StartNew();
         var hops = new List<object>();
-        
         using var ping = new Ping();
         int maxHops = 30;
-        
         try 
         {
             for (int ttl = 1; ttl <= maxHops; ttl++)
@@ -176,67 +163,26 @@ public class Worker : BackgroundService
                 var options = new PingOptions(ttl, true);
                 var buffer = new byte[32]; 
                 var timeout = 1000;
-
-                PingReply reply;
                 try 
                 {
-                    reply = await ping.SendPingAsync(metric.Target, timeout, buffer, options);
+                    var reply = await ping.SendPingAsync(metric.Target, timeout, buffer, options);
+                    hops.Add(new { hop = ttl, ip = reply.Address?.ToString() ?? "*", status = reply.Status.ToString(), time = reply.RoundtripTime });
+                    if (reply.Status == IPStatus.Success) { metric.Status = "Success"; break; }
                 }
-                catch 
-                {
-                    hops.Add(new { hop = ttl, ip = "*", status = "TimedOut", time = 0 });
-                    continue;
-                }
-                
-                hops.Add(new { 
-                    hop = ttl, 
-                    ip = reply.Address?.ToString() ?? "*", 
-                    status = reply.Status.ToString(), 
-                    time = reply.RoundtripTime 
-                });
-
-                if (reply.Status == IPStatus.Success) 
-                {
-                    metric.Status = "Success";
-                    break; 
-                }
+                catch { hops.Add(new { hop = ttl, ip = "*", status = "TimedOut" }); }
             }
             if(metric.Status != "Success") metric.Status = "Success"; 
         }
-        catch (Exception ex)
-        { 
-            metric.Status = "Failed";
-            _logger.LogError($"Trace Error: {ex.Message}");
-        }
-        
+        catch { metric.Status = "Failed"; }
         sw.Stop();
-        // ✅ เก็บค่าลง Value
-        metric.Value = sw.ElapsedMilliseconds; 
-        
-        metric.ExtraData = JsonSerializer.Serialize(new { 
-            AgentName = AgentName, 
-            TotalHops = hops.Count,
-            Hops = hops 
-        });
-        
-        _logger.LogInformation($"[TRACE] Finished {metric.Target}. Hops: {hops.Count}");
+        metric.Value = sw.ElapsedMilliseconds;
+        metric.ExtraData = JsonSerializer.Serialize(new { AgentName = AgentName, TotalHops = hops.Count, Hops = hops });
+        _logger.LogInformation($"[TRACE] Finished {metric.Target}");
     }
 
     private async Task SendData(NetworkMetric metric)
     {
-        try
-        {
-            var res = await _httpClient.PostAsJsonAsync(BackendUrl, metric);
-            if(!res.IsSuccessStatusCode)
-            {
-                 // อ่านข้อความ Error จาก Backend มาโชว์เลย จะได้รู้ว่าผิดอะไร
-                 var errorMsg = await res.Content.ReadAsStringAsync();
-                 _logger.LogError($"Failed to send to Backend: {res.StatusCode}. Msg: {errorMsg}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Backend connection failed: {ex.Message}");
-        }
+        try { await _httpClient.PostAsJsonAsync(BackendUrl, metric); }
+        catch (Exception ex) { _logger.LogError($"Send Error: {ex.Message}"); }
     }
 }
