@@ -3,9 +3,9 @@
     <header class="page-header">
       <div>
         <p class="eyebrow">Timeline</p>
-        <h1>Network Events</h1>
+        <h1>Network Events (Grouped)</h1>
         <p class="text-muted">
-          Latest activities from your monitoring agents.
+          Grouped activities by target. Click to see details.
         </p>
       </div>
       <button class="btn-primary" @click="fetchEvents">
@@ -14,49 +14,66 @@
     </header>
 
     <section class="event-list panel">
-      <div v-if="events.length === 0" class="no-data">
-        No events found in database.
+      <div v-if="groupedEvents.length === 0" class="no-data">
+        Waiting for monitoring data...
       </div>
 
-      <article v-for="event in events" :key="event.id" class="event-row">
-        <div class="event-time">
-          <strong>{{ event.timeStr }}</strong>
-          <span>{{ event.dateStr }}</span>
-        </div>
-
-        <div class="event-body">
-          <div class="event-header">
-            <div class="event-title-group">
-              <h3>{{ event.target }}</h3>
-              
-              <span class="pill soft-pill">
-                {{ event.metricType }}
-              </span>
-
-              <span 
-                class="pill soft-pill" 
-                :class="event.status === 'Success' ? 'status-success' : 'status-danger'"
-              >
-                <span class="status-dot"></span>
-                {{ event.status }}
-              </span>
-            </div>
+      <article v-for="group in groupedEvents" :key="group.target" class="event-group">
+        
+        <div class="group-header" @click="group.expanded = !group.expanded">
+          <div class="group-info">
+            <h3>{{ group.target }}</h3>
+            <span class="pill soft-pill">{{ group.metricType }}</span>
+            
+            <span class="pill soft-pill" :class="group.latestStatus === 'Success' ? 'status-success' : 'status-danger'">
+              <span class="status-dot"></span>
+              {{ group.latestStatus }}
+            </span>
           </div>
 
-          <p class="text-muted">
-            Latency: <strong style="color: white">{{ event.value }} ms</strong> 
-            <span v-if="event.packetLoss > 0"> | Loss: {{ event.packetLoss }}%</span>
-            <span v-if="event.statusCode"> | Code: {{ event.statusCode }}</span>
-          </p>
-
-          <button class="btn-text" @click="event.showDetails = !event.showDetails">
-            {{ event.showDetails ? 'Hide Log' : 'View Raw Log' }}
-          </button>
-
-          <div v-if="event.showDetails" class="log-box">
-            <pre>{{ JSON.stringify(event.raw, null, 2) }}</pre>
+          <div class="group-meta">
+            <span class="time-range">
+              {{ group.startTime }} - {{ group.lastTime }}
+            </span>
+            <span class="expand-icon">{{ group.expanded ? '▼' : '▶' }}</span>
           </div>
         </div>
+
+        <div v-if="group.expanded" class="group-body">
+          <table class="log-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Latency</th>
+                <th>Status</th>
+                <th>Raw</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in group.logs" :key="log.id">
+                <td class="col-time">{{ log.timeStr }}</td>
+                <td>
+                  <span class="val">{{ log.value }} ms</span>
+                  <span v-if="log.packetLoss > 0" class="text-danger"> (Loss {{ log.packetLoss }}%)</span>
+                </td>
+                <td>
+                  <span :class="log.status === 'Success' ? 'text-green' : 'text-red'">
+                    {{ log.status }}
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-link" @click="log.showJson = !log.showJson">
+                    {{ log.showJson ? '{}' : '{...}' }}
+                  </button>
+                  <div v-if="log.showJson" class="mini-json">
+                    {{ JSON.stringify(log.raw, null, 0) }}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
       </article>
     </section>
   </div>
@@ -66,149 +83,130 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-const events = ref([])
+// เก็บข้อมูลที่จัดกลุ่มแล้ว
+const groupedEvents = ref([])
 
 const fetchEvents = async () => {
   try {
-    // ดึงข้อมูล 20 ตัวล่าสุด (ใช้ API ตัวเดิมที่มีอยู่แล้ว)
+    // ดึงข้อมูลดิบมาก่อน (อาจจะขอเยอะหน่อย เช่น 50 ตัวล่าสุด เพื่อให้เห็นกลุ่มชัดเจน)
+    // หมายเหตุ: Backend ของคุณตอนนี้ตั้ง limit ไว้ 20 ใน MetricsController (Take(20)) 
+    // ถ้าอยากได้เยอะกว่านี้ต้องแก้ Backend แต่ตอนนี้ใช้ 20 ไปก่อนได้ครับ
     const res = await axios.get('http://localhost:5050/api/metrics/filter')
-    
-    // แปลงข้อมูลจาก Backend ให้เป็นรูปแบบที่หน้าเว็บใช้ง่ายๆ
-    events.value = res.data.map(item => {
+    const rawData = res.data
+
+    // --- LOGIC การจัดกลุ่ม (Grouping) ---
+    const groups = {}
+
+    rawData.forEach(item => {
+      // แปลงวันที่
       const dateObj = new Date(item.timestamp)
-      return {
+      const timeStr = dateObj.toLocaleTimeString('en-US', { hour12: false })
+      
+      // ถ้ายังไม่มีกลุ่มของ Target นี้ ให้สร้างใหม่
+      if (!groups[item.target]) {
+        groups[item.target] = {
+          target: item.target,
+          metricType: item.metricType,
+          logs: [],
+          expanded: false, // สถานะเปิด/ปิด
+          latestStatus: item.status, // เอาสถานะตัวล่าสุด (ตัวแรกที่เจอ)
+          lastTime: timeStr, // เวลาล่าสุด
+          startTime: timeStr // เดี๋ยวจะอัปเดตตอนวนลูปจบ
+        }
+      }
+
+      // ยัดข้อมูลย่อยลงไปในกลุ่ม
+      groups[item.target].logs.push({
         id: item.id,
-        target: item.target,
-        metricType: item.metricType,
         value: item.value,
         status: item.status,
         packetLoss: item.packetLoss,
-        statusCode: item.statusCode,
-        
-        // จัดรูปแบบเวลา
-        timeStr: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        dateStr: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        
-        // เก็บข้อมูลดิบไว้โชว์ตอนกด View Log
+        timeStr: timeStr,
+        timestamp: dateObj.getTime(), // เก็บ timestamp ไว้เทียบเวลา
         raw: item,
-        showDetails: false // state สำหรับเปิด/ปิด log
-      }
+        showJson: false
+      })
+      
+      // อัปเดตเวลาเริ่มต้น (Start Time) ให้เป็นเวลาของข้อมูลที่เก่าที่สุดในชุด
+      groups[item.target].startTime = timeStr 
     })
+
+    // แปลง Object เป็น Array เพื่อเอาไปวนลูปแสดงผล
+    groupedEvents.value = Object.values(groups)
+
   } catch (err) {
-    console.error("Error loading events:", err)
+    console.error("Failed to fetch events", err)
   }
 }
 
-// โหลดข้อมูลทันทีเมื่อเข้าหน้านี้
 onMounted(() => {
   fetchEvents()
+  setInterval(fetchEvents, 5000) 
 })
 </script>
 
 <style scoped>
-.page-shell {
-  padding: 48px clamp(24px, 6vw, 72px);
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  color: white;
-}
+.page-shell { padding: 40px; color: #fff; }
+.page-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
+.btn-primary { background: #238636; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
 
-.btn-primary {
-  background: #238636;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-}
+/* Group Styles */
+.event-list { display: flex; flex-direction: column; gap: 15px; }
 
-.btn-text {
-  background: none;
-  border: none;
-  color: #58a6ff;
-  cursor: pointer;
-  font-size: 0.9em;
-  margin-top: 8px;
-  padding: 0;
-  text-align: left;
-}
-.btn-text:hover { text-decoration: underline; }
-
-.event-list {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  background: #161b22; /* พื้นหลังเข้ม */
-  border-radius: 8px;
+.event-group {
+  background: #161b22;
   border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.event-row {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 24px;
-  padding: 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.event-row:last-child { border-bottom: none; }
-
-.event-time { text-align: right; color: #8b949e; }
-.event-time strong { display: block; font-size: 20px; color: white; }
-
-.event-title-group {
+/* Header ของแต่ละกลุ่ม (แถบที่คลิกได้) */
+.group-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+  padding: 15px 20px;
+  cursor: pointer;
+  background: #21262d;
+  transition: background 0.2s;
 }
+.group-header:hover { background: #30363d; }
 
-h3 { margin: 0; font-size: 1.1em; color: #fff; }
+.group-info { display: flex; align-items: center; gap: 12px; }
+.group-info h3 { margin: 0; color: #58a6ff; font-size: 1.1em; }
 
-.text-muted { color: #8b949e; margin: 0; }
+.group-meta { display: flex; align-items: center; gap: 15px; color: #8b949e; font-size: 0.9em; }
+.expand-icon { font-size: 0.8em; }
 
-/* Status Styles */
-.pill {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.85em;
-  background: rgba(255,255,255,0.1);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.status-success { color: #3fb950; background: rgba(63, 185, 80, 0.15); }
-.status-danger { color: #f85149; background: rgba(248, 81, 73, 0.15); }
-.status-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background-color: currentColor;
-}
-
-/* Log Box */
-.log-box {
+/* Body ของกลุ่ม (ตาราง Logs) */
+.group-body {
+  border-top: 1px solid #30363d;
   background: #0d1117;
   padding: 10px;
-  border-radius: 6px;
-  margin-top: 10px;
-  border: 1px solid #30363d;
-  overflow-x: auto;
 }
-pre { margin: 0; color: #c9d1d9; font-size: 0.85em; font-family: monospace; }
-.no-data { padding: 40px; text-align: center; color: #8b949e; font-style: italic; }
 
-@media (max-width: 768px) {
-  .event-row { grid-template-columns: 1fr; gap: 10px; }
-  .event-time { text-align: left; display: flex; gap: 10px; align-items: baseline; }
-}
+/* Table Styles */
+.log-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.log-table th { text-align: left; color: #8b949e; padding: 8px; border-bottom: 1px solid #30363d; }
+.log-table td { padding: 8px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+.log-table tr:last-child td { border-bottom: none; }
+
+.col-time { width: 120px; color: #8b949e; }
+.val { font-weight: bold; color: #e6edf3; }
+.text-green { color: #3fb950; }
+.text-red { color: #f85149; }
+.text-danger { color: #f85149; font-size: 0.8em; }
+
+/* ปุ่ม Raw Json */
+.btn-link { background: none; border: none; color: #58a6ff; cursor: pointer; font-family: monospace; }
+.mini-json { font-size: 0.75em; color: #8b949e; margin-top: 4px; font-family: monospace; word-break: break-all; }
+
+/* Status Pills */
+.pill { padding: 2px 10px; border-radius: 12px; font-size: 0.75em; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); }
+.status-success { color: #3fb950; background: rgba(63, 185, 80, 0.15); }
+.status-danger { color: #f85149; background: rgba(248, 81, 73, 0.15); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.no-data { text-align: center; color: #8b949e; padding: 40px; }
 </style>
