@@ -22,7 +22,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> PostMetric([FromBody] NetworkMetric metric) 
+        public async Task<IActionResult> PostMetric([FromBody] NetworkMetric metric)
         {
             // 🔍 LOG VALIDATION ERRORS
             if (!ModelState.IsValid)
@@ -30,25 +30,25 @@ namespace Backend.Controllers
                 var errors = string.Join("; ", ModelState.Values
                     .SelectMany(v => v.Errors)
                     .Select(e => e.ErrorMessage));
-                
+
                 _logger.LogError($"❌ BAD REQUEST: {errors}");
                 return BadRequest(new { error = "Invalid Model", details = errors });
             }
 
-            if (metric == null) 
+            if (metric == null)
             {
                 _logger.LogError("❌ Metric object is NULL");
                 return BadRequest("Metric is null");
             }
 
-            if (metric.Timestamp == default) 
+            if (metric.Timestamp == default)
             {
                 metric.Timestamp = DateTime.UtcNow;
             }
-            
-            try 
+
+            try
             {
-                _context.NetworkMetrics.Add(metric); 
+                _context.NetworkMetrics.Add(metric);
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "Data saved" });
             }
@@ -62,37 +62,53 @@ namespace Backend.Controllers
         [HttpGet("latest")]
         public IActionResult GetLatest()
         {
-             var latest = _context.NetworkMetrics
-                .GroupBy(p => p.Target)
-                .Select(g => g.OrderByDescending(p => p.Timestamp).FirstOrDefault())
-                .ToList();
+            var latest = _context.NetworkMetrics
+               .GroupBy(p => p.Target)
+               .Select(g => g.OrderByDescending(p => p.Timestamp).FirstOrDefault())
+               .ToList();
             return Ok(latest);
         }
 
-[HttpGet("filter")]
-public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] string? type)
-{
-    var query = _context.NetworkMetrics.AsQueryable();
+        [HttpGet("filter")]
+        public IActionResult GetFilteredMetrics([FromQuery] string? target, [FromQuery] string? type)
+        {
+            var query = _context.NetworkMetrics.AsQueryable();
 
-    // เช็ค null ก่อนใช้ และ trim whitespace
-    if (!string.IsNullOrEmpty(target))
-    {
-        var trimmedTarget = target.Trim();
-        query = query.Where(m => m.Target.Trim() == trimmedTarget);
-    }
+            // เช็ค null ก่อนใช้ และ trim whitespace
+            if (!string.IsNullOrEmpty(target))
+            {
+                var trimmedTarget = target.Trim();
+                // หมายเหตุ: การใช้ .Trim() ใน LINQ อาจมีปัญหากับบาง Database Provider 
+                // แต่ถ้าใช้ PostgreSQL (Npgsql) ปกติจะรองรับครับ
+                query = query.Where(m => m.Target.Trim() == trimmedTarget);
+            }
 
-    if (!string.IsNullOrEmpty(type))
-    {
-        query = query.Where(m => m.MetricType == type);
-    }
+            if (!string.IsNullOrEmpty(type))
+            {
+                query = query.Where(m => m.MetricType == type);
+            }
 
-    var data = query
-        .OrderByDescending(m => m.Timestamp)
-        .Take(20)
-        .ToList();
-        
-    _logger.LogInformation($"Filtered metrics: target={target}, type={type}, count={data.Count}");
-    return Ok(data);
+            var data = query
+                .OrderByDescending(m => m.Timestamp)
+                .Take(20)
+                .ToList();
+
+            _logger.LogInformation($"Filtered metrics: target={target}, type={type}, count={data.Count}");
+            return Ok(data);
+        }
+
+        // ✅ เพิ่ม API นี้: ให้ Agent มาดึงรายชื่อ Target จากประวัติเดิม
+        [HttpGet("targets")]
+        public IActionResult GetActiveTargets()
+        {
+            // ไปกวาดดูใน Database ย้อนหลัง 24 ชม. ว่ามี Target ไหนถูกยิงบ้าง
+            var targets = _context.NetworkMetrics
+                .Where(m => m.Timestamp > DateTime.UtcNow.AddHours(-24)) // เอาแค่ที่ Active ใน 24 ชม.
+                .Select(m => new { m.Target, m.MetricType }) // เลือกมาแค่ชื่อกับประเภท
+                .Distinct() // ตัดตัวซ้ำทิ้ง
+                .ToList();
+
+            return Ok(targets);
         }
     }
 }
