@@ -15,22 +15,31 @@
         </p>
       </div>
       <div class="header-actions">
-        <button class="btn-primary" @click="fetchDashboardData">Refresh Data</button>
+        <button class="btn-primary" @click="fetchDashboardData">
+          Refresh Data
+        </button>
       </div>
     </header>
 
     <section class="metrics-grid">
-      <article v-for="metric in dashboardMetrics" :key="metric.label" class="metric-card panel">
+      <article
+        v-for="metric in dashboardMetrics"
+        :key="metric.label"
+        class="metric-card panel"
+      >
         <div class="metric-head">
           <p class="metric-label">{{ metric.label }}</p>
           <span class="trend-pill" :class="metric.trendClass">
             {{ metric.delta }}
           </span>
         </div>
-        <h2>{{ metric.value }}</h2>
+        <h2 class="metric-value">{{ metric.value }}</h2>
         <p class="metric-subtitle">{{ metric.caption }}</p>
         <div class="progress-track">
-          <div class="progress-fill" :style="{ width: metric.progress + '%' }"></div>
+          <div
+            class="progress-fill"
+            :style="{ width: metric.progress + '%' }"
+          ></div>
         </div>
       </article>
     </section>
@@ -43,9 +52,15 @@
             <p class="panel-subtitle">Current status of monitored endpoints</p>
           </div>
         </div>
-        <div v-if="targetHealth.length === 0" class="no-data">No data available</div>
+        <div v-if="targetHealth.length === 0" class="no-data">
+          No data available
+        </div>
         <div class="probe-grid">
-          <div v-for="target in targetHealth" :key="target.target" class="probe-card">
+          <div
+            v-for="target in targetHealth"
+            :key="target.target"
+            class="probe-card"
+          >
             <div class="probe-head">
               <span class="probe-name">{{ target.target }}</span>
               <span class="pill soft-pill">
@@ -65,7 +80,9 @@
               </div>
               <div>
                 <p class="probe-label">Time</p>
-                <p class="probe-value">{{ new Date(target.timestamp).toLocaleTimeString() }}</p>
+                <p class="probe-value">
+                  {{ new Date(target.timestamp).toLocaleTimeString() }}
+                </p>
               </div>
             </div>
           </div>
@@ -79,32 +96,54 @@
             <p class="panel-subtitle">Sorted by response time</p>
           </div>
         </div>
-        <div v-if="slowestTargets.length === 0" class="no-data">No data available</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Target</th>
-              <th>Type</th>
-              <th>Latency</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="target in slowestTargets" :key="target.id">
-              <td>{{ target.target }}</td>
-              <td>{{ target.metricType }}</td>
-              <td :class="{'text-danger': target.value > 100, 'text-warning': target.value > 50}">
-                {{ target.value }} ms
-              </td>
-              <td>
-                <span class="pill soft-pill">
-                  <span class="status-dot" :class="target.status === 'Success' ? 'status-success' : 'status-danger'"></span>
-                  {{ target.status }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-if="slowestTargets.length === 0" class="no-data">
+          No data available
+        </div>
+        <div v-else class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>Type</th>
+                <th>Latency</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(target, index) in slowestTargets"
+                :key="
+                  target.id || `${target.target}-${target.timestamp}-${index}`
+                "
+              >
+                <td class="target-cell">{{ target.target }}</td>
+                <td class="type-cell">{{ target.metricType }}</td>
+                <td
+                  :class="{
+                    'text-danger': target.value > 100,
+                    'text-warning': target.value > 50 && target.value <= 100,
+                  }"
+                  class="latency-cell"
+                >
+                  <strong>{{ target.value.toLocaleString() }} ms</strong>
+                </td>
+                <td class="status-cell">
+                  <span class="pill soft-pill">
+                    <span
+                      class="status-dot"
+                      :class="
+                        target.status === 'Success'
+                          ? 'status-success'
+                          : 'status-danger'
+                      "
+                    ></span>
+                    {{ target.status }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </article>
 
       <article class="panel table-panel">
@@ -127,7 +166,9 @@
           <li>
             <div>
               <p class="location-name">Healthy</p>
-              <p class="location-meta text-muted">Targets responding normally</p>
+              <p class="location-meta text-muted">
+                Targets responding normally
+              </p>
             </div>
             <div class="location-score">
               <strong class="text-success">{{ healthyCount }}</strong>
@@ -149,64 +190,81 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import { ref, computed, onMounted, onUnmounted } from "vue";
+import axios from "axios";
 
 // --- State ---
-const rawData = ref([])
-const timer = ref(null)
+const rawData = ref([]);
+const timer = ref(null);
 
 // --- Config ---
 const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
-  if (window.location.port === "8080" || window.location.hostname !== "localhost") return "/api"
-  return "http://localhost:5050"
-}
-const API_URL = getApiBaseUrl()
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (
+    window.location.port === "8080" ||
+    window.location.hostname !== "localhost"
+  )
+    return "/api";
+  return "http://localhost:5050";
+};
+const API_URL = getApiBaseUrl();
 
 // --- Data Fetching ---
 const fetchDashboardData = async () => {
   try {
     // ใช้ API /latest ที่คุณมีอยู่แล้ว เพื่อดึงสถานะล่าสุดของทุก Target
-    const endpoint = API_URL.startsWith("/") ? `${API_URL}/metrics/latest` : `${API_URL}/api/metrics/latest`
-    const res = await axios.get(endpoint)
-    rawData.value = res.data
+    const endpoint = API_URL.startsWith("/")
+      ? `${API_URL}/metrics/latest`
+      : `${API_URL}/api/metrics/latest`;
+    const res = await axios.get(endpoint);
+    rawData.value = res.data;
   } catch (err) {
-    console.error("Dashboard fetch error:", err)
+    console.error("Dashboard fetch error:", err);
   }
-}
+};
 
 // --- Computed Properties (Calculations) ---
 
 // 1. Metrics Cards (4 กล่องบน)
 const dashboardMetrics = computed(() => {
-  if (rawData.value.length === 0) return [
-    { label: "Mean Latency", value: "0 ms", progress: 0 },
-    { label: "Avg Packet Loss", value: "0%", progress: 0 },
-    { label: "Active Targets", value: "0", progress: 0 },
-    { label: "System Health", value: "0%", progress: 0 }
-  ]
+  if (rawData.value.length === 0)
+    return [
+      { label: "Mean Latency", value: "0 ms", progress: 0 },
+      { label: "Avg Packet Loss", value: "0%", progress: 0 },
+      { label: "Active Targets", value: "0", progress: 0 },
+      { label: "System Health", value: "0%", progress: 0 },
+    ];
 
   // Calculate Average Latency
-  const totalLatency = rawData.value.reduce((acc, curr) => acc + curr.value, 0)
-  const avgLatency = Math.round(totalLatency / rawData.value.length)
+  const totalLatency = rawData.value.reduce((acc, curr) => acc + curr.value, 0);
+  const avgLatency = Math.round(totalLatency / rawData.value.length);
+
+  // Find max latency for progress bar scaling
+  const maxLatency = Math.max(...rawData.value.map((i) => i.value), 100);
 
   // Calculate Average Packet Loss
-  const totalLoss = rawData.value.reduce((acc, curr) => acc + curr.packetLoss, 0)
-  const avgLoss = (totalLoss / rawData.value.length).toFixed(2)
+  const totalLoss = rawData.value.reduce(
+    (acc, curr) => acc + curr.packetLoss,
+    0
+  );
+  const avgLoss = (totalLoss / rawData.value.length).toFixed(2);
 
   // Success Rate
-  const successCount = rawData.value.filter(i => i.status === 'Success').length
-  const healthRate = Math.round((successCount / rawData.value.length) * 100)
+  const successCount = rawData.value.filter(
+    (i) => i.status === "Success"
+  ).length;
+  const healthRate = Math.round((successCount / rawData.value.length) * 100);
 
   return [
     {
       label: "Mean Latency",
-      value: `${avgLatency} ms`,
+      value: `${avgLatency.toLocaleString()} ms`,
       caption: "Global average",
-      delta: avgLatency < 50 ? "Healthy" : "High",
-      trendClass: avgLatency < 50 ? "up" : "down", // Reusing 'up' style for green
-      progress: Math.min(avgLatency, 100) // Scale to 100
+      delta:
+        avgLatency < 50 ? "Healthy" : avgLatency < 200 ? "Moderate" : "High",
+      trendClass:
+        avgLatency < 50 ? "up" : avgLatency < 200 ? "warning" : "down",
+      progress: Math.min((avgLatency / Math.max(maxLatency, 100)) * 100, 100), // Scale dynamically
     },
     {
       label: "Avg Packet Loss",
@@ -214,7 +272,7 @@ const dashboardMetrics = computed(() => {
       caption: "Across all targets",
       delta: avgLoss < 1 ? "Good" : "Issues",
       trendClass: avgLoss < 1 ? "up" : "down",
-      progress: Math.min(avgLoss * 10, 100)
+      progress: Math.min(avgLoss * 10, 100),
     },
     {
       label: "Active Targets",
@@ -222,7 +280,7 @@ const dashboardMetrics = computed(() => {
       caption: "Monitored endpoints",
       delta: "Active",
       trendClass: "up",
-      progress: 100
+      progress: 100,
     },
     {
       label: "System Health",
@@ -230,39 +288,43 @@ const dashboardMetrics = computed(() => {
       caption: "Success rate",
       delta: healthRate > 90 ? "Stable" : "Degraded",
       trendClass: healthRate > 90 ? "up" : "down",
-      progress: healthRate
-    }
-  ]
-})
+      progress: healthRate,
+    },
+  ];
+});
 
 // 2. Target Health List
 const targetHealth = computed(() => {
-  return rawData.value.map(item => ({
+  return rawData.value.map((item) => ({
     ...item,
-    statusClass: item.status === 'Success' ? 'status-success' : 'status-danger'
-  }))
-})
+    statusClass: item.status === "Success" ? "status-success" : "status-danger",
+  }));
+});
 
 // 3. Slowest Targets (Top 5)
 const slowestTargets = computed(() => {
   // Copy array and sort by value descending
-  return [...rawData.value]
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5)
-})
+  return [...rawData.value].sort((a, b) => b.value - a.value).slice(0, 5);
+});
 
 // 4. Counts
-const totalTargets = computed(() => rawData.value.length)
-const healthyCount = computed(() => rawData.value.filter(i => i.status === 'Success').length)
-const criticalCount = computed(() => rawData.value.filter(i => i.status !== 'Success' || i.packetLoss > 0).length)
+const totalTargets = computed(() => rawData.value.length);
+const healthyCount = computed(
+  () => rawData.value.filter((i) => i.status === "Success").length
+);
+const criticalCount = computed(
+  () =>
+    rawData.value.filter((i) => i.status !== "Success" || i.packetLoss > 0)
+      .length
+);
 
 // --- Lifecycle ---
 onMounted(() => {
-  fetchDashboardData()
-  timer.value = setInterval(fetchDashboardData, 5000) // Auto refresh every 5s
-})
+  fetchDashboardData();
+  timer.value = setInterval(fetchDashboardData, 5000); // Auto refresh every 5s
+});
 
-onUnmounted(() => clearInterval(timer.value))
+onUnmounted(() => clearInterval(timer.value));
 </script>
 
 <style scoped>
@@ -300,34 +362,143 @@ onUnmounted(() => clearInterval(timer.value))
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
 }
 
 .metric-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: #161b22;
+  gap: 12px;
+  background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
   border: 1px solid #30363d;
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: 12px;
+  padding: 28px;
+  min-height: 160px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.metric-head { display: flex; justify-content: space-between; align-items: center; }
-.metric-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.18em; color: #8b949e; }
-.metric-card h2 { font-size: 32px; font-weight: 600; margin: 0; }
-.metric-subtitle { color: #8b949e; margin: 0; font-size: 0.9em; }
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #238636, #2ea043);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
 
-.trend-pill { border-radius: 999px; padding: 4px 12px; font-size: 13px; }
-.trend-pill.up { background: rgba(63, 185, 80, 0.15); color: #3fb950; } /* Green */
-.trend-pill.down { background: rgba(248, 81, 73, 0.15); color: #f85149; } /* Red */
+.metric-card:hover {
+  border-color: #30363d;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+.metric-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.metric-label {
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8b949e;
+  font-weight: 600;
+}
+.metric-value {
+  font-size: clamp(32px, 4.5vw, 48px);
+  font-weight: 800;
+  margin: 8px 0 4px 0;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #ffffff 0%, #e6edf3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.metric-subtitle {
+  color: #8b949e;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.trend-pill {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+.trend-pill.up {
+  background: rgba(63, 185, 80, 0.12);
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.2);
+} /* Green */
+.trend-pill.warning {
+  background: rgba(210, 153, 34, 0.12);
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.2);
+} /* Yellow */
+.trend-pill.down {
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.2);
+} /* Red */
 
 .progress-track {
-  width: 100%; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin-top: 10px;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-top: auto;
+  position: relative;
 }
 .progress-fill {
-  height: 100%; border-radius: inherit; background: linear-gradient(120deg, #238636, #2ea043);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #238636, #2ea043);
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.progress-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .panels-grid {
@@ -337,52 +508,236 @@ onUnmounted(() => clearInterval(timer.value))
   margin-top: 32px;
 }
 
-.wide-panel { grid-column: span 2; }
-.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
-.panel-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-.panel-title { font-size: 1.1em; font-weight: 600; margin: 0; }
-.panel-subtitle { color: #8b949e; font-size: 0.9em; margin: 4px 0 0; }
+.wide-panel {
+  grid-column: span 2;
+}
+.panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px;
+}
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.panel-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0;
+}
+.panel-subtitle {
+  color: #8b949e;
+  font-size: 0.9em;
+  margin: 4px 0 0;
+}
 
 /* Probe Grid */
-.probe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-.probe-card { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 18px; background: rgba(255, 255, 255, 0.02); }
-.probe-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.probe-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
-.probe-meta { color: #8b949e; font-size: 13px; margin: 0; }
-.probe-metrics { display: flex; justify-content: space-between; margin-top: 12px; }
-.probe-label { font-size: 11px; text-transform: uppercase; color: #8b949e; }
-.probe-value { font-size: 14px; font-weight: 600; }
+.probe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.probe-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.probe-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.probe-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+.probe-meta {
+  color: #8b949e;
+  font-size: 13px;
+  margin: 0;
+}
+.probe-metrics {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.probe-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+.probe-value {
+  font-size: 14px;
+  font-weight: 600;
+}
 
 /* Table */
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 12px 0; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
-th { font-size: 12px; text-transform: uppercase; color: #8b949e; }
-tr:last-child td { border-bottom: none; }
+.table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 500px;
+}
+th,
+td {
+  padding: 16px 16px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+th {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #8b949e;
+  font-weight: 600;
+  padding-bottom: 12px;
+  white-space: nowrap;
+}
+td {
+  font-size: 14px;
+  vertical-align: middle;
+}
+.target-cell {
+  max-width: 200px;
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+.type-cell {
+  white-space: nowrap;
+  min-width: 100px;
+}
+.latency-cell {
+  font-size: 15px;
+  min-width: 120px;
+}
+.latency-cell strong {
+  font-weight: 600;
+}
+.status-cell {
+  white-space: nowrap;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
 
 /* Location/Stats List */
-.location-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.location-list li { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
-.location-list li:last-child { border-bottom: none; }
-.location-score strong { font-size: 24px; }
+.location-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.location-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.location-list li:last-child {
+  border-bottom: none;
+}
+.location-score strong {
+  font-size: 24px;
+}
 
 /* Utilities */
-.text-muted { color: #8b949e; }
-.text-danger { color: #f85149; }
-.text-warning { color: #d29922; }
-.text-success { color: #3fb950; }
-.btn-primary { background: #238636; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-.btn-ghost { background: transparent; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-.no-data { text-align: center; padding: 40px; color: #8b949e; font-style: italic; }
+.text-muted {
+  color: #8b949e;
+}
+.text-danger {
+  color: #f85149;
+}
+.text-warning {
+  color: #d29922;
+}
+.text-success {
+  color: #3fb950;
+}
+.btn-primary {
+  background: #238636;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #8b949e;
+  font-style: italic;
+}
 
 /* Status Pills */
-.pill { padding: 2px 10px; border-radius: 12px; font-size: 0.75em; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1); }
-.status-success { background: rgba(63,185,80,0.2); color: #3fb950; }
-.status-danger { background: rgba(248,81,73,0.2); color: #f85149; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.header-pill { background: rgba(51, 179, 174, 0.15); color: #33b3ae; border: 1px solid rgba(51, 179, 174, 0.3); }
+.pill {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.status-success {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+.status-danger {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.header-pill {
+  background: rgba(51, 179, 174, 0.15);
+  color: #33b3ae;
+  border: 1px solid rgba(51, 179, 174, 0.3);
+}
 
-@media (max-width: 960px) {
-  .wide-panel { grid-column: span 1; }
-  .workspace-header { flex-direction: column; }
+@media (max-width: 1200px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .wide-panel {
+    grid-column: span 1;
+  }
+  .workspace-header {
+    flex-direction: column;
+  }
 }
 </style>

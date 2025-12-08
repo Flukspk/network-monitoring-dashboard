@@ -56,15 +56,15 @@ function logout() {
 
 <style scoped>
 .sidebar {
-  width: clamp(240px, 18vw, 280px);
+  width: clamp(200px, 14vw, 220px);
   min-height: 100vh;
-  padding: 32px 28px;
+  padding: 24px 20px;
   background: rgba(5, 6, 8, 0.9);
   border-right: 1px solid rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(28px);
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 28px;
 }
 
 .brand {
@@ -74,12 +74,12 @@ function logout() {
 }
 
 .brand-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
 }
 
 .brand-tag {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .nav {
@@ -99,13 +99,14 @@ function logout() {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
   text-decoration: none;
   color: var(--text-primary);
   position: relative;
   transition: background 0.2s ease;
+  font-size: 14px;
 }
 
 .nav-item:hover {
@@ -118,7 +119,7 @@ function logout() {
 }
 
 .nav-icon {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .nav-badge {
@@ -138,7 +139,7 @@ function logout() {
 .status-card {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 12px;
   background: rgba(255, 255, 255, 0.02);
   display: flex;
   align-items: center;
@@ -146,7 +147,7 @@ function logout() {
 }
 
 .status-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -154,8 +155,9 @@ function logout() {
   width: 100%;
   border: none;
   border-radius: var(--radius-md);
-  padding: 12px 0;
+  padding: 10px 0;
   font-weight: 600;
+  font-size: 14px;
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
   cursor: pointer;
