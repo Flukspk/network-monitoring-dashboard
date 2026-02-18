@@ -12,6 +12,7 @@
         :key="item.path"
         :to="item.path"
         class="nav-item"
+        :class="{ 'active-link': $route.path.startsWith(item.path) }"
       >
         <span class="nav-icon">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
@@ -36,16 +37,19 @@
 </template>
 
 <script setup>
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router"; // เพิ่ม useRoute เพื่อเช็ค active class แม่นยำขึ้น
 
 const router = useRouter();
+const route = useRoute(); // ใช้สำหรับเช็ค active link
 
+// ✅ เพิ่ม Settings เข้าไปในรายการ
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: "📊" },
   { path: "/test", label: "Testing", icon: "🧪", badge: "6" },
   { path: "/event", label: "Events", icon: "📅", badge: "2" },
   { path: "/alert", label: "Alerts", icon: "🚨", badge: "4" },
   { path: "/users", label: "Users", icon: "👤" },
+  { path: "/settings", label: "Settings", icon: "⚙️" }, // ✅ เพิ่มเมนู Settings ตรงนี้
 ];
 
 function logout() {
@@ -76,10 +80,12 @@ function logout() {
 .brand-name {
   font-size: 16px;
   font-weight: 600;
+  color: white;
 }
 
 .brand-tag {
   font-size: 12px;
+  color: #8b949e;
 }
 
 .nav {
@@ -93,7 +99,8 @@ function logout() {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.28em;
-  color: var(--text-muted);
+  color: #8b949e;
+  margin-bottom: 8px;
 }
 
 .nav-item {
@@ -101,44 +108,54 @@ function logout() {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   text-decoration: none;
-  color: var(--text-primary);
+  color: #c9d1d9; /* text-primary default */
   position: relative;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
   font-size: 14px;
 }
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.05);
+  color: white;
 }
 
-.nav-item.router-link-active {
-  background: rgba(77, 165, 221, 0.18);
-  border: 1px solid rgba(77, 165, 221, 0.35);
+/* Active State */
+.nav-item.router-link-active,
+.active-link {
+  background: rgba(77, 165, 221, 0.15);
+  border: 1px solid rgba(77, 165, 221, 0.3);
+  color: #4da5dd;
 }
 
 .nav-icon {
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nav-badge {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .sidebar-footer {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin-top: auto;
 }
 
 .status-card {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.02);
   display: flex;
@@ -149,23 +166,48 @@ function logout() {
 .status-title {
   font-size: 13px;
   font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+.text-muted {
+  font-size: 11px;
+  color: #8b949e;
+  margin: 0;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #3fb950;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #3fb950;
+  box-shadow: 0 0 8px rgba(63, 185, 80, 0.4);
 }
 
 .logout-btn {
   width: 100%;
-  border: none;
-  border-radius: var(--radius-md);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+  border-radius: 6px;
   padding: 10px 0;
   font-weight: 600;
   font-size: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
+  background: rgba(248, 81, 73, 0.1);
+  color: #f85149;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .logout-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(248, 81, 73, 0.2);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 960px) {
