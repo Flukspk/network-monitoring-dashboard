@@ -1,294 +1,186 @@
 <template>
-  <div class="testing-page">
-    <header class="page-header">
-      <div class="header-content">
-        <div class="header-text">
-          <p class="eyebrow">Network Diagnostics</p>
-          <h1>Live Agent Monitor</h1>
-          <p class="subtitle">
-            Real-time latency monitoring and network diagnostics
+  <div class="kuma-layout">
+    <aside class="sidebar-monitors">
+      <div class="sidebar-header">
+        <button class="btn-add-monitor" @click="openModal">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Add New Monitor
+        </button>
+      </div>
+      
+      <div class="monitor-list">
+        <div 
+          v-for="m in monitors" 
+          :key="m.target"
+          class="monitor-item"
+          :class="{ active: selectedMonitor && selectedMonitor.target === m.target }"
+          @click="selectMonitor(m)"
+        >
+          <span class="status-pill" :class="getStatusColor(m.status)"></span>
+          <div class="monitor-info">
+             <span class="monitor-name">{{ m.target }}</span>
+             <span class="monitor-type">{{ m.type }}</span>
+          </div>
+          <span class="monitor-ping" v-if="m.latency > 0">{{ m.latency }}ms</span>
+        </div>
+        <div v-if="monitors.length === 0" class="empty-list">
+          No monitors added yet.
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content" v-if="selectedMonitor">
+      
+      <div class="content-header">
+        <div>
+          <h1 class="target-title">{{ selectedMonitor.target }}</h1>
+          <p class="target-subtitle">
+            Monitor Uptime of {{ selectedMonitor.target }} ({{ selectedMonitor.type }})
+            <span v-if="selectedMonitor.threshold" class="threshold-badge">
+              • Alert Threshold: {{ selectedMonitor.threshold }} ms
+            </span>
           </p>
         </div>
         <div class="header-actions">
-          <button
-            v-if="!isMonitoring"
-            class="btn-primary btn-icon"
-            @click="openModal"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <button class="btn-delete" @click="deleteMonitor(selectedMonitor)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M6 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-7 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            New Test
-          </button>
-          <button v-else class="btn-danger btn-icon" @click="stopMonitoring">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />
-            </svg>
-            Stop Monitoring
+            Delete
           </button>
         </div>
       </div>
-    </header>
 
-    <section v-if="!isMonitoring" class="dashboard-section">
-        <div class="cards-grid">
-            <div class="card activity-card">
-               <div v-if="latestMetric" class="card-body">
-                    <div class="metric-item">
-                    <span class="metric-label">Target</span>
-                    <span class="metric-value highlight">{{ latestMetric.target }}</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Type</span>
-                        <span class="metric-badge">{{ latestMetric.metricType }}</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Status</span>
-                        <span class="status-badge" :class="getStatusClass(latestMetric.status)">
-                            <span class="status-dot"></span>
-                            {{ latestMetric.status }}
-                        </span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Latency</span>
-                        <span class="metric-value large">{{ latestMetric.value }}<span class="unit">ms</span></span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Timestamp</span>
-                        <span class="metric-value dimmed">{{ formatTime(latestMetric.timestamp) }}</span>
-                    </div>
-               </div>
-               <div v-else class="empty-state">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 8v4M12 16h.01" />
-                    </svg>
-                    <p>No recent activity</p>
-                    <p class="empty-hint">Start a new test to see results here</p>
-               </div>
+      <div class="card uptime-card">
+        <div class="uptime-layout">
+          <div class="uptime-bars-container">
+            <div class="uptime-bars">
+              <div 
+                v-for="(log, idx) in getHistoryBars(selectedMonitor)" 
+                :key="idx"
+                class="bar-pill"
+                :class="getStatusColor(log.status)"
+                :title="log.time + ' | ' + log.latency + 'ms'"
+              ></div>
             </div>
-
-            <div class="card info-card">
-                <div class="card-header">
-                    <h3>Quick Start</h3>
-                </div>
-                <div class="card-body">
-                    <ol class="steps-list">
-                    <li>
-                        <span class="step-number">1</span>
-                        <div>
-                        <strong>Click "New Test"</strong>
-                        <p>Open the test configuration dialog</p>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="step-number">2</span>
-                        <div>
-                        <strong>Select Agent & Targets</strong>
-                        <p>Add one or multiple targets to monitor</p>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="step-number">3</span>
-                        <div>
-                        <strong>Start Monitoring</strong>
-                        <p>View real-time graph and logs</p>
-                        </div>
-                    </li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section v-else class="monitoring-section">
-      <div class="stats-bar">
-        <div class="stat-item">
-          <span class="stat-label">Targets</span>
-          <span class="stat-value" v-if="activeTargets.length > 1">{{ activeTargets.length }} Targets Active</span>
-          <span class="stat-value" v-else>{{ activeTargets[0] }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Agent</span>
-          <span class="stat-value">{{ selectedAgentMode }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Status</span>
-          <span class="live-badge">
-            <span class="pulse-dot"></span>
-            Live
-          </span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Updates</span>
-          <span class="stat-value">{{ logs.length }} tests</span>
+            <p class="check-interval">Check every 5 seconds</p>
+          </div>
+          <div class="big-badge" :class="getStatusColor(selectedMonitor.status)">
+             {{ selectedMonitor.status === 'Success' ? 'Up' : (selectedMonitor.status === 'Pending' ? 'Wait' : 'Down') }}
+          </div>
         </div>
       </div>
 
-      <div class="card graph-card">
-        <div class="card-header">
-          <div class="card-title-group">
-            <h3>Latency Graph</h3>
-            <div class="graph-controls">
-              <span class="graph-range">Min: {{ minVal }}ms</span>
-              <span class="graph-range">Max: {{ maxVal }}ms</span>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <p class="stat-label">Response<br>(Current)</p>
+          <p class="stat-value" :class="{'text-red': selectedMonitor.threshold && selectedMonitor.latency > selectedMonitor.threshold}">
+            {{ selectedMonitor.latency }} <span class="unit">ms</span>
+          </p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Avg. Response<br>(All time)</p>
+          <p class="stat-value">{{ calculateAvgLatency(selectedMonitor) }} <span class="unit">ms</span></p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Uptime<br>(Recorded)</p>
+          <p class="stat-value">{{ calculateUptime(selectedMonitor) }} <span class="unit">%</span></p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Status<br>(Latest)</p>
+          <p class="stat-value" :class="getStatusTextClass(selectedMonitor.status)">{{ selectedMonitor.status }}</p>
+        </div>
+      </div>
+
+      <div class="card graph-card" v-show="selectedMonitor.type !== 'TRACEROUTE'">
+        <div class="graph-header">
+           <span class="graph-title">Response Time (ms)</span>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas ref="chartCanvas" width="800" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="card terminal-card" v-if="selectedMonitor.type === 'TRACEROUTE'">
+         <div class="graph-header">
+           <span class="graph-title">Traceroute Console (Latest Result)</span>
+        </div>
+        <div class="terminal-box">
+          <div class="terminal-header">
+            traceroute to {{ selectedMonitor.target }} ({{ selectedMonitor.target }}), 30 hops max, 32 byte packets
+          </div>
+          <div class="terminal-body">
+            <div v-if="latestHops.length === 0" class="terminal-waiting">
+               Waiting for traceroute data... (Takes up to 30 seconds)
+            </div>
+            <div v-for="hop in latestHops" :key="hop.hop" class="hop-line">
+              <span class="hop-num">{{ hop.hop }}</span>
+              <span class="hop-ip" v-if="hop.ip !== '*'">{{ hop.ip }} ({{ hop.ip }})</span>
+              <span class="hop-ip timeout-ip" v-else>* * *</span>
+              <span class="hop-time" v-if="hop.time > 0">{{ hop.time }} ms</span>
+              <span class="hop-time timeout-text" v-else-if="hop.ip === '*'">Request timeout</span>
             </div>
           </div>
         </div>
-        <div class="graph-container">
-          <canvas ref="chartCanvas" width="800" height="300"></canvas>
-        </div>
       </div>
 
-      <div class="card logs-card">
-        <div class="card-header">
-          <h3>Recent Logs</h3>
-          <span class="logs-count">{{ logs.length }} entries</span>
-        </div>
-        <div class="table-container">
-          <table class="logs-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Target</th>
-                <th>Latency</th>
-                <th>Status</th>
-                <th>Info</th> </tr>
-            </thead>
-            <tbody>
-              <tr v-if="logs.length === 0">
-                <td colspan="5" class="empty-table">
-                  <span>Waiting for test results...</span>
-                </td>
-              </tr>
-              <tr v-for="(log, i) in logs" :key="i" class="log-row">
-                <td class="log-time">{{ log.time }}</td>
-                <td class="log-target">{{ log.target }}</td>
-                <td class="log-value">
-                  <span class="value-number">{{ log.value }}</span>
-                  <span class="value-unit">ms</span>
-                </td>
-                <td>
-                  <span class="status-badge" :class="getStatusClass(log.status)">
-                    <span class="status-dot"></span>
-                    {{ log.status }}
-                  </span>
-                </td>
-                <td>
-                  <button 
-                    v-if="log.extraData" 
-                    class="btn-icon-sm" 
-                    @click="showLogDetails(log)"
-                    title="View Details"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 3.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" stroke="currentColor" stroke-width="1.5"/>
-                    </svg>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+    </main>
+
+    <main class="main-content empty-state" v-else>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path d="M9 12l2 2 4-4" />
+      </svg>
+      <h2>Welcome to Live Monitor</h2>
+      <p>Select a monitor from the left or add a new one.</p>
+    </main>
 
     <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h2>Configure Test</h2>
-          <button class="close-btn" @click="closeModal" aria-label="Close">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M5 5l10 10M15 5l-10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </button>
+          <h2>Add New Monitor</h2>
+          <button class="close-btn" @click="closeModal">✕</button>
         </div>
-
         <div class="modal-body">
           <div class="form-group">
-            <label for="agent-select">
-              <span>Agent Type</span>
-              <span class="label-hint">Select the type of network test</span>
-            </label>
-            <select id="agent-select" v-model="selectedAgentMode" class="form-select">
-              <option value="PING">Agent 1 - Ping (ICMP)</option>
-              <option value="HTTP">Agent 2 - HTTP Request</option>
-              <option value="TRACEROUTE">Agent 3 - Traceroute</option>
+            <label>Monitor Type</label>
+            <select v-model="newType" class="form-control">
+              <option value="PING">PING (IP or Domain)</option>
+              <option value="HTTP">HTTP(s) (Website URL)</option>
+              <option value="TRACEROUTE">TRACEROUTE (Path analysis)</option>
             </select>
           </div>
-
+          
           <div class="form-group">
-            <label>
-                <span>Targets</span>
-                <span class="label-hint">Add one or more targets to monitor</span>
-            </label>
-            <div class="target-rows-container">
-                
-                <div 
-                v-for="(item, index) in targetRows" 
-                :key="index" 
-                class="target-row"
-                >
-                <div class="input-wrapper">
-                    <span class="row-number">#{{ index + 1 }}</span>
-                    <input
-                    v-model="item.value"
-                    type="text"
-                    class="form-input target-input"
-                    placeholder="e.g. 8.8.8.8"
-                    @keydown.enter.prevent="addTargetRow" 
-                    ref="targetInputs"
-                    />
-                </div>
-                
-                <button 
-                    v-if="targetRows.length > 1 || item.value"
-                    class="btn-icon-danger" 
-                    @click="removeTargetRow(index)"
-                    title="Remove"
-                >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
-                </div>
-
-                <button class="btn-add-row" @click="addTargetRow">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                Add Another Target
-                </button>
-
-            </div>
-            
-            <div class="examples-section">
-                <p class="examples-label">Quick add:</p>
-                <div class="examples-grid">
-                    <template v-if="selectedAgentMode === 'PING'">
-                        <button v-for="ex in pingExamples" :key="ex" class="example-chip" @click="fillExample(ex)">{{ ex }}</button>
-                    </template>
-                    <template v-else-if="selectedAgentMode === 'HTTP'">
-                        <button v-for="ex in httpExamples" :key="ex" class="example-chip" @click="fillExample(ex)">{{ ex.replace('https://', '') }}</button>
-                    </template>
-                     <template v-else>
-                        <button v-for="ex in traceExamples" :key="ex" class="example-chip" @click="fillExample(ex)">{{ ex }}</button>
-                    </template>
-                </div>
-            </div>
+            <label>Target (IP / Hostname / URL)</label>
+            <input 
+              v-model="newTarget" 
+              type="text" 
+              class="form-control" 
+              :placeholder="newType === 'HTTP' ? 'https://google.com' : '8.8.8.8'"
+            />
+            <small class="hint" v-if="newType === 'HTTP'">Must start with http:// or https://</small>
+            <small class="hint" v-else>Do NOT include http://</small>
           </div>
-        </div>
 
+          <div class="form-group" v-show="newType !== 'TRACEROUTE'">
+            <label>Alert Threshold (ms)</label>
+            <input 
+              v-model="newThreshold" 
+              type="number" 
+              class="form-control" 
+              placeholder="e.g. 500"
+              min="1"
+            />
+            <small class="hint text-warning">Trigger line notification if latency exceeds this value</small>
+          </div>
+
+        </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button
-            class="btn-primary"
-            @click="startTestFromModal"
-            :disabled="!hasValidTargets"
-          >
-            <span v-if="isRunningTest">Starting...</span>
-            <span v-else>Start Monitoring ({{ validTargetCount }})</span>
-          </button>
+          <button class="btn-cancel" @click="closeModal">Cancel</button>
+          <button class="btn-save" @click="addMonitor">Save & Start</button>
         </div>
       </div>
     </div>
@@ -296,33 +188,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import axios from "axios";
 
-// State
-const isMonitoring = ref(false);
+// --- State ---
+const monitors = ref([]); 
+const selectedMonitor = ref(null); 
 const showModal = ref(false);
-const latestMetric = ref(null);
-const selectedAgentMode = ref("PING");
 
-// Multi-target State
-const targetRows = ref([{ value: '' }]); // เริ่มต้น 1 ช่องเสมอ
-const activeTargets = ref([]); // เก็บ Targets ที่กำลัง Monitor อยู่จริง
+// Form State
+const newTarget = ref("");
+const newType = ref("PING");
+const newThreshold = ref(500); // 🚨 ค่าเริ่มต้น Threshold 500ms
 
-const logs = ref([]);
-const dataPoints = ref(Array.from({ length: 20 }, () => 0));
-const timer = ref(null);
+let loopInterval = null;
 const chartCanvas = ref(null);
-const maxVal = ref(100);
-const minVal = ref(0);
-const isRunningTest = ref(false);
 
-// Example targets
-const pingExamples = ["1.1.1.1", "8.8.8.8", "8.8.4.4", "208.67.222.222", "9.9.9.9"];
-const httpExamples = ["https://www.google.com", "https://www.github.com", "https://www.cloudflare.com", "https://httpbin.org/get"];
-const traceExamples = ["8.8.8.8", "1.1.1.1", "google.com"];
-
-// API Configuration
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (window.location.port === "8080" || window.location.hostname !== "localhost") return "/api";
@@ -330,465 +211,369 @@ const getApiBaseUrl = () => {
 };
 const API_BASE_URL = getApiBaseUrl();
 
-// Computed Properties for Validation
-const validTargetCount = computed(() => {
-    return targetRows.value.filter(r => r.value.trim() !== '').length;
+// 💻 ดึงข้อมูล Hops ตัวล่าสุดของ Traceroute ออกมาแสดงผล
+const latestHops = computed(() => {
+  if (!selectedMonitor.value || selectedMonitor.value.type !== 'TRACEROUTE') return [];
+  const history = selectedMonitor.value.history;
+  if (!history || history.length === 0) return [];
+  
+  const latestLog = history[history.length - 1]; 
+  if (!latestLog || !latestLog.extraData) return [];
+
+  try {
+    const parsed = JSON.parse(latestLog.extraData);
+    return parsed.Detail?.Hops || parsed.Hops || [];
+  } catch (e) {
+    return [];
+  }
 });
-const hasValidTargets = computed(() => validTargetCount.value > 0);
 
-
-// Helper Functions
-const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
-const getStatusClass = (status) => {
-  if (status === "Success") return "status-success";
-  if (status === "Investigate" || status === "Failed" || status === "Error") return "status-danger";
-  return "status-warning";
-};
-
-// --- Target Row Functions ---
-const addTargetRow = async () => {
-  targetRows.value.push({ value: '' });
-  await nextTick();
-  // Focus ช่องใหม่ล่าสุด
-  const inputs = document.querySelectorAll('.target-input');
-  if(inputs.length > 0) inputs[inputs.length - 1].focus();
-};
-
-const removeTargetRow = (index) => {
-    // ถ้าเหลือช่องเดียว ให้แค่เคลียร์ค่า ไม่ลบ row
-    if (targetRows.value.length === 1) {
-        targetRows.value[0].value = '';
-    } else {
-        targetRows.value.splice(index, 1);
+onMounted(() => {
+  const saved = localStorage.getItem("kuma_monitors");
+  if (saved) {
+    monitors.value = JSON.parse(saved);
+    if (monitors.value.length > 0) {
+      selectedMonitor.value = monitors.value[0];
     }
-};
+  }
 
-const fillExample = (val) => {
-    // หาช่องว่างช่องแรก
-    const emptyRow = targetRows.value.find(r => r.value.trim() === '');
-    if (emptyRow) {
-        emptyRow.value = val;
-    } else {
-        // ถ้าเต็มหมด เพิ่มช่องใหม่
-        targetRows.value.push({ value: val });
-    }
-};
+  runLoop();
+  loopInterval = setInterval(runLoop, 5000);
+});
 
-// Modal Actions
+onUnmounted(() => {
+  if (loopInterval) clearInterval(loopInterval);
+});
+
+watch(selectedMonitor, () => {
+  if (selectedMonitor.value && selectedMonitor.value.type !== 'TRACEROUTE') {
+    nextTick(() => { drawGraph(); });
+  }
+});
+
+// --- Modal Functions ---
 const openModal = () => {
-  targetRows.value = [{ value: '' }]; // Reset
+  newTarget.value = "";
+  newType.value = "PING";
+  newThreshold.value = 500; // 🚨 รีเซ็ตเป็น 500 ตอนเปิด Modal ใหม่
   showModal.value = true;
 };
+const closeModal = () => { showModal.value = false; };
 
-const closeModal = () => {
-  showModal.value = false;
-};
-
-// Start Monitoring
-const startTestFromModal = async () => {
-  // ดึงค่าจาก Rows ออกมาเป็น Array String
-  const finalTargets = targetRows.value
-    .map(r => r.value.trim())
-    .filter(v => v !== '');
-
-  if (finalTargets.length === 0) {
-    alert("Please enter at least one target");
-    return;
+const addMonitor = () => {
+  let target = newTarget.value.trim().toLowerCase();
+  
+  if (!target) return alert("Target cannot be empty!");
+  if (newType.value === "HTTP" && !target.startsWith("http")) {
+    return alert("HTTP monitor must start with http:// or https://");
+  }
+  if ((newType.value === "PING" || newType.value === "TRACEROUTE") && target.startsWith("http")) {
+    return alert(`${newType.value} monitor cannot start with http://`);
+  }
+  // 🚨 Validation สำหรับ Threshold
+  if (newType.value !== "TRACEROUTE" && (!newThreshold.value || newThreshold.value <= 0)) {
+    return alert("Please enter a valid threshold (greater than 0 ms).");
   }
 
-  // Set Active Targets
-  activeTargets.value = [...finalTargets];
+  if (monitors.value.some(m => m.target === target && m.type === newType.value)) {
+    return alert("This target & type is already being monitored!");
+  }
 
-  showModal.value = false;
-  isMonitoring.value = true;
-  isRunningTest.value = true;
+  const newMon = {
+    target: target,
+    type: newType.value,
+    threshold: newType.value === 'TRACEROUTE' ? null : newThreshold.value, // 🚨 บันทึกค่าลงตัวแปร
+    status: "Pending",
+    latency: 0,
+    history: []
+  };
 
-  // Reset data
-  logs.value = [];
-  dataPoints.value = Array.from({ length: 20 }, () => 0);
-
-  // Run test immediately, then loop
-  runBatchTest();
-  timer.value = setInterval(runBatchTest, 5000); // 5 sec interval
-  isRunningTest.value = false;
+  monitors.value.push(newMon);
+  saveToLocal();
+  selectedMonitor.value = newMon;
+  closeModal();
 };
 
-// Run Batch Test
-const runBatchTest = async () => {
-  if (activeTargets.value.length === 0) return;
+const deleteMonitor = (mon) => {
+  if(!confirm(`Are you sure you want to delete ${mon.target}?`)) return;
+  monitors.value = monitors.value.filter(m => !(m.target === mon.target && m.type === mon.type));
+  selectedMonitor.value = monitors.value.length > 0 ? monitors.value[0] : null;
+  saveToLocal();
+};
 
+const selectMonitor = (mon) => {
+  selectedMonitor.value = mon;
+};
+
+const saveToLocal = () => {
+  localStorage.setItem("kuma_monitors", JSON.stringify(monitors.value));
+};
+
+// --- Core Logic ---
+const runLoop = async () => {
+  if (monitors.value.length === 0) return;
+
+  const types = ["PING", "HTTP", "TRACEROUTE"];
+  for (const t of types) {
+    const targetsOfType = monitors.value.filter(m => m.type === t).map(m => m.target);
+    if (targetsOfType.length > 0) {
+      try {
+        const endpoint = API_BASE_URL.startsWith("/") ? `${API_BASE_URL}/agent/run-batch` : `${API_BASE_URL}/api/agent/run-batch`;
+        await axios.post(endpoint, {
+          AgentId: t,
+          Targets: targetsOfType,
+          MetricType: t
+        });
+      } catch (err) {
+        console.error(`Error running ${t}:`, err);
+      }
+    }
+  }
+
+  setTimeout(fetchLatestData, 800);
+};
+
+const fetchLatestData = async () => {
   try {
-    const apiEndpoint = API_BASE_URL.startsWith("/")
-      ? `${API_BASE_URL}/agent/run-batch`
-      : `${API_BASE_URL}/api/agent/run-batch`;
+    const endpoint = API_BASE_URL.startsWith("/") ? `${API_BASE_URL}/metrics/filter` : `${API_BASE_URL}/api/metrics/filter`;
+    const res = await axios.get(endpoint);
+    
+    if (!res.data || res.data.length === 0) return;
 
-    await axios.post(apiEndpoint, {
-      AgentId: selectedAgentMode.value,
-      Targets: activeTargets.value, // ส่ง List ไป
-      MetricType: selectedAgentMode.value,
+    const grouped = {};
+    res.data.forEach(d => {
+      const key = `${d.target}_${d.metricType}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(d);
     });
 
-    // Wait and fetch
-    setTimeout(() => {
-      fetchData();
-    }, 800);
-  } catch (err) {
-    console.error("Test error:", err);
-  }
-};
+    let needsGraphRedraw = false;
+    monitors.value.forEach(m => {
+      const key = `${m.target}_${m.type}`;
+      if (grouped[key]) {
+        const dbHistory = grouped[key].slice(0, 40).reverse();
+        
+        m.history = dbHistory.map(h => ({
+          latency: h.value,
+          status: h.status,
+          time: new Date(h.timestamp).toLocaleTimeString(),
+          extraData: h.extraData
+        }));
 
-// Stop Monitoring
-const stopMonitoring = async () => {
-  isMonitoring.value = false;
-  activeTargets.value = [];
-  if (timer.value) {
-    clearInterval(timer.value);
-    timer.value = null;
-  }
-  fetchLatest();
-};
+        const latest = m.history[m.history.length - 1];
+        if (latest) {
+          m.status = latest.status;
+          m.latency = latest.latency;
+        }
 
-const fetchLatest = async () => {
-  try {
-    const apiEndpoint = API_BASE_URL.startsWith("/") ? `${API_BASE_URL}/metrics/filter` : `${API_BASE_URL}/api/metrics/filter`;
-    const res = await axios.get(apiEndpoint);
-    if (res.data && res.data.length > 0) {
-      latestMetric.value = res.data[0];
-    }
-  } catch (err) {
-    console.error("Fetch latest error:", err);
-  }
-};
-
-const fetchData = async () => {
-  try {
-    const apiEndpoint = API_BASE_URL.startsWith("/") ? `${API_BASE_URL}/metrics/filter` : `${API_BASE_URL}/api/metrics/filter`;
-    const res = await axios.get(apiEndpoint);
-
-    if (res.data && res.data.length > 0) {
-      // Filter เฉพาะ Targets ที่เราสนใจ
-      const relevantLogs = res.data
-        .filter(d => activeTargets.value.includes(d.target))
-        .slice(0, activeTargets.value.length * 2); 
-      
-      for (const data of relevantLogs) {
-           const timeStr = new Date(data.timestamp).toLocaleTimeString();
-           const exists = logs.value.some(l => l.timestamp === data.timestamp && l.target === data.target);
-           
-           if (!exists) {
-                logs.value.unshift({
-                    time: timeStr,
-                    target: data.target,
-                    value: data.value,
-                    status: data.status,
-                    timestamp: data.timestamp,
-                    extraData: data.extraData // ✅ เก็บข้อมูล Hops ไว้
-                });
-                
-                dataPoints.value.shift();
-                dataPoints.value.push(data.value);
-           }
+        if (selectedMonitor.value && m.target === selectedMonitor.value.target && m.type === selectedMonitor.value.type) {
+           if (m.type !== 'TRACEROUTE') needsGraphRedraw = true;
+        }
       }
+    });
 
-      if (logs.value.length > 50) logs.value = logs.value.slice(0, 50);
+    saveToLocal();
 
-      await nextTick();
-      drawGraph();
+    if (needsGraphRedraw) {
+      nextTick(() => { drawGraph(); });
     }
+
   } catch (err) {
-    console.error("Fetch error:", err);
+    console.error("Fetch Data Error:", err);
   }
 };
 
-// ✅ ฟังก์ชันแสดงรายละเอียด (Traceroute Hops)
-const showLogDetails = (log) => {
-  if (!log.extraData) return;
-
-  try {
-    const data = typeof log.extraData === 'string' 
-      ? JSON.parse(log.extraData) 
-      : log.extraData;
-
-    if (data.Hops || data.Detail?.Hops) {
-      // รองรับทั้งโครงสร้างตรงๆ และแบบมี Detail
-      const hops = data.Hops || data.Detail.Hops;
-      let msg = `Trace Result for ${log.target}:\n\n`;
-      
-      hops.forEach(hop => {
-        msg += `#${hop.hop} - ${hop.ip} (${hop.time}ms) [${hop.status}]\n`;
-      });
-      alert(msg);
-    } else {
-      alert(`Details:\n${data.Message || JSON.stringify(data, null, 2)}`);
-    }
-  } catch (e) {
-    console.error("Parse error", e);
-    alert("Raw Data: " + log.extraData);
-  }
+// --- UI Helpers ---
+const getStatusColor = (status) => {
+  if (status === "Success") return "up";
+  if (status === "Investigate" || status === "Failed" || status === "Error") return "down";
+  return "pending";
 };
 
-// Draw Graph (Same logic)
+const getStatusTextClass = (status) => {
+  if (status === "Success") return "text-green";
+  if (status === "Investigate" || status === "Failed") return "text-red";
+  return "text-gray";
+};
+
+const getHistoryBars = (mon) => {
+  const maxBars = 40;
+  const bars = [...mon.history];
+  while (bars.length < maxBars) {
+    bars.unshift({ status: "Pending", latency: 0, time: "-" });
+  }
+  return bars;
+};
+
+const calculateAvgLatency = (mon) => {
+  if (!mon.history || mon.history.length === 0) return 0;
+  const valid = mon.history.filter(h => h.latency > 0);
+  if (valid.length === 0) return 0;
+  const sum = valid.reduce((acc, curr) => acc + curr.latency, 0);
+  return Math.round(sum / valid.length);
+};
+
+const calculateUptime = (mon) => {
+  if (!mon.history || mon.history.length === 0) return 100;
+  const valid = mon.history.filter(h => h.status !== "Pending");
+  if (valid.length === 0) return 100;
+  const up = valid.filter(h => h.status === "Success").length;
+  return Math.round((up / valid.length) * 100);
+};
+
+// --- Graph Drawing ---
 const drawGraph = () => {
   const canvas = chartCanvas.value;
-  if (!canvas) return;
+  if (!canvas || !selectedMonitor.value || selectedMonitor.value.type === 'TRACEROUTE') return;
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
-  const data = dataPoints.value;
+  
+  const data = selectedMonitor.value.history.map(h => h.latency);
+  if (data.length === 0) return;
 
   ctx.clearRect(0, 0, width, height);
 
-  const max = Math.max(...data, 50) * 1.2;
-  maxVal.value = Math.round(max);
-  const min = Math.min(...data.filter((d) => d > 0), 0);
-  minVal.value = Math.round(min);
+  const maxVal = Math.max(...data, 50) * 1.2;
 
-  // Grid
   ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    const y = (height / 5) * i;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
+  for (let i = 0; i <= 4; i++) {
+    const y = (height / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
   }
 
-  // Line
+  // 🚨 ถ้ายูสเซอร์ตั้ง Threshold และค่าปิงปัจจุบันดันเกิน ให้วาดเส้นเป็นสีเหลืองเตือนภัย!
   ctx.beginPath();
-  ctx.strokeStyle = "#4da5dd";
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
+  let lineColor = "#50b83c"; // เขียว
+  if (selectedMonitor.value.status !== 'Success') {
+    lineColor = "#e74c3c"; // แดง
+  } else if (selectedMonitor.value.threshold && selectedMonitor.value.latency > selectedMonitor.value.threshold) {
+    lineColor = "#d29922"; // เหลืองเตือน
+  }
+  
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
   ctx.lineJoin = "round";
 
-  const stepX = width / (data.length - 1);
+  const stepX = width / Math.max(data.length - 1, 1);
   data.forEach((val, index) => {
     const x = index * stepX;
-    const y = height - (val / max) * height;
+    const y = height - (val / maxVal) * height;
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
 
-  // Fill
-  ctx.lineTo(width, height);
-  ctx.lineTo(0, height);
+  ctx.lineTo(width, height); 
+  ctx.lineTo(0, height); 
   ctx.closePath();
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, "rgba(77, 165, 221, 0.2)");
-  gradient.addColorStop(1, "rgba(77, 165, 221, 0.01)");
-  ctx.fillStyle = gradient;
+  // ลงสีใต้กราฟให้เข้ากับเส้น
+  if (lineColor === "#50b83c") {
+    gradient.addColorStop(0, "rgba(80, 184, 60, 0.3)");
+    gradient.addColorStop(1, "rgba(80, 184, 60, 0.01)");
+  } else if (lineColor === "#e74c3c") {
+    gradient.addColorStop(0, "rgba(231, 76, 60, 0.3)");
+    gradient.addColorStop(1, "rgba(231, 76, 60, 0.01)");
+  } else {
+    gradient.addColorStop(0, "rgba(210, 153, 34, 0.3)");
+    gradient.addColorStop(1, "rgba(210, 153, 34, 0.01)");
+  }
+  ctx.fillStyle = gradient; 
   ctx.fill();
-
-  // Dots
-  ctx.fillStyle = "#4da5dd";
-  data.forEach((val, index) => {
-    if (val > 0) {
-      const x = index * stepX;
-      const y = height - (val / max) * height;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  });
 };
-
-onMounted(() => {
-  fetchLatest();
-});
-
-onUnmounted(() => {
-  if (timer.value) clearInterval(timer.value);
-});
 </script>
 
 <style scoped>
-/* --- Styles ใหม่สำหรับ Target Rows --- */
-.target-rows-container {
+.kuma-layout {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  min-height: 100vh;
+  background-color: #0b0e14;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-.target-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  animation: slideDown 0.2s ease;
-}
+.sidebar-monitors { width: 280px; background-color: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
+.sidebar-header { padding: 16px; border-bottom: 1px solid #30363d; }
+.btn-add-monitor { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background-color: #50b83c; color: #fff; border: none; padding: 10px; border-radius: 20px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+.btn-add-monitor:hover { opacity: 0.8; }
+.monitor-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.empty-list { text-align: center; color: #8b949e; font-size: 13px; padding: 20px 0; }
+.monitor-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+.monitor-item:hover { background-color: rgba(255, 255, 255, 0.05); }
+.monitor-item.active { background-color: #1f242c; }
+.status-pill { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.up { background-color: #50b83c; color: #50b83c; } 
+.down { background-color: #e74c3c; color: #e74c3c; } 
+.pending { background-color: #8b949e; color: #8b949e; } 
+.monitor-info { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.monitor-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.monitor-type { font-size: 10px; color: #8b949e; font-family: monospace; letter-spacing: 0.5px;}
+.monitor-ping { font-size: 12px; color: #8b949e; font-family: monospace; }
 
-.input-wrapper {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-
-.row-number {
-  position: absolute;
-  left: 12px;
-  color: #4da5dd;
-  font-size: 12px;
-  font-family: monospace;
-  opacity: 0.7;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.target-input {
-  padding-left: 40px !important; /* เว้นที่ให้ตัวเลขลำดับ */
-}
-
-.btn-icon-danger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px; /* ให้ปุ่มใหญ่กดง่าย */
-  height: 42px;
-  border: 1px solid #da3633;
-  background: rgba(218, 54, 51, 0.1);
-  color: #f85149;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.btn-icon-danger:hover {
-  background: #da3633;
-  color: white;
-}
-
-.btn-add-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 12px;
-  border: 1px dashed #30363d;
-  background: transparent;
-  color: #8b949e;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.btn-add-row:hover {
-  border-color: #4da5dd;
-  color: #4da5dd;
-  background: rgba(77, 165, 221, 0.05);
-}
-
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* เพิ่ม Style ให้ Column Target ใน Table */
-.log-target {
-    font-size: 13px;
-    color: #e6edf3;
-    font-weight: 500;
-}
-
-/* ... CSS เดิม ... */
-.testing-page { min-height: 100vh; padding: 40px clamp(24px, 4vw, 60px); background: #050608; color: white; }
-.page-header { margin-bottom: 32px; }
-.header-content { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-.header-text { flex: 1; }
-.eyebrow { text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #8b949e; margin-bottom: 8px; }
-.page-header h1 { font-size: clamp(28px, 4vw, 36px); font-weight: 700; margin: 0 0 8px 0; color: white; }
-.subtitle { font-size: 15px; color: #8b949e; margin: 0; }
-.btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 15px; cursor: pointer; transition: all 0.2s ease; }
-.btn-primary:hover:not(:disabled) { background: #2ea043; transform: translateY(-1px); }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-.btn-danger { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #da3633; color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 15px; cursor: pointer; transition: all 0.2s ease; }
-.btn-danger:hover { background: #f85149; transform: translateY(-1px); }
-.btn-secondary { padding: 10px 20px; background: transparent; border: 1px solid #30363d; color: white; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; }
-.btn-secondary:hover { border-color: #8b949e; background: rgba(255, 255, 255, 0.05); }
-.btn-icon-sm { background: transparent; border: none; color: #8b949e; cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.2s ease; }
-.btn-icon-sm:hover { color: white; background: rgba(255, 255, 255, 0.05); }
-.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
-.card { background: linear-gradient(135deg, #161b22 0%, #1c2128 100%); border: 1px solid #30363d; border-radius: 8px; padding: 24px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-.card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #30363d; }
-.card-title-group { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.card h3 { font-size: 18px; font-weight: 600; margin: 0; color: white; }
-.metric-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #30363d; }
-.metric-item:last-child { border-bottom: none; }
-.metric-label { font-size: 13px; color: #8b949e; font-weight: 500; }
-.metric-value { font-size: 15px; color: white; font-weight: 600; }
-.metric-value.highlight { color: #4da5dd; font-size: 16px; }
-.metric-value.large { font-size: 20px; font-weight: 700; color: white; }
-.metric-value.large .unit { font-size: 14px; font-weight: 500; margin-left: 4px; color: #8b949e; }
-.metric-value.dimmed { color: #8b949e; font-size: 13px; font-weight: 400; }
-.metric-badge { padding: 4px 12px; background: rgba(77, 165, 221, 0.15); color: #4da5dd; border-radius: 12px; font-size: 12px; font-weight: 600; }
-.status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-.status-badge.status-success { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
-.status-badge.status-danger { background: rgba(248, 81, 73, 0.15); color: #f85149; }
-.status-badge.status-warning { background: rgba(210, 153, 34, 0.15); color: #d29922; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.empty-state { text-align: center; padding: 48px 24px; color: #8b949e; }
+.main-content { flex: 1; padding: 32px 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
+.empty-state { align-items: center; justify-content: center; color: #8b949e; text-align: center; }
 .empty-state svg { margin-bottom: 16px; opacity: 0.5; }
-.empty-state p { margin: 8px 0; font-size: 15px; }
-.empty-hint { font-size: 13px; opacity: 0.7; }
-.steps-list { list-style: none; padding: 0; margin: 0; }
-.steps-list li { display: flex; gap: 16px; margin-bottom: 24px; align-items: flex-start; }
-.steps-list li:last-child { margin-bottom: 0; }
-.step-number { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #238636; color: white; border-radius: 50%; font-weight: 700; font-size: 14px; flex-shrink: 0; }
-.steps-list li div { flex: 1; padding-top: 4px; }
-.steps-list strong { display: block; color: white; margin-bottom: 4px; font-size: 14px; }
-.steps-list p { color: #8b949e; font-size: 13px; margin: 0; }
-.monitoring-section { display: flex; flex-direction: column; gap: 24px; }
-.stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; padding: 20px; background: linear-gradient(135deg, #161b22 0%, #1c2128 100%); border: 1px solid #30363d; border-radius: 8px; }
-.stat-item { display: flex; flex-direction: column; gap: 6px; }
-.stat-label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-.stat-value { font-size: 16px; font-weight: 600; color: white; }
-.live-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(63, 185, 80, 0.15); color: #3fb950; border-radius: 12px; font-size: 12px; font-weight: 600; }
-.pulse-dot { width: 8px; height: 8px; background: #3fb950; border-radius: 50%; animation: pulse 2s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.2); } }
-.graph-card { padding: 0; overflow: hidden; }
-.graph-card .card-header { padding: 24px 24px 0 24px; margin-bottom: 0; }
-.graph-controls { display: flex; gap: 16px; font-size: 12px; color: #8b949e; }
-.graph-container { padding: 24px; background: rgba(13, 17, 23, 0.5); border-radius: 6px; margin: 20px; }
-.graph-container canvas { width: 100%; height: auto; display: block; }
-.logs-card .card-header { margin-bottom: 0; }
-.logs-count { font-size: 12px; color: #8b949e; font-weight: 500; }
-.table-container { max-height: 400px; overflow-y: auto; margin-top: 16px; }
-.logs-table { width: 100%; border-collapse: collapse; }
-.logs-table thead { position: sticky; top: 0; background: #161b22; z-index: 10; }
-.logs-table th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; border-bottom: 2px solid #30363d; }
-.log-row { transition: background 0.15s ease; }
-.log-row:hover { background: rgba(255, 255, 255, 0.02); }
-.log-row td { padding: 14px 16px; border-bottom: 1px solid #30363d; }
-.log-time { font-size: 13px; color: #8b949e; font-family: "Monaco", "Menlo", monospace; }
-.log-value { display: flex; align-items: baseline; gap: 4px; }
-.value-number { font-size: 16px; font-weight: 600; color: white; }
-.value-unit { font-size: 12px; color: #8b949e; }
-.empty-table { text-align: center; padding: 48px; color: #8b949e; font-style: italic; }
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s ease; }
-.modal-dialog { background: linear-gradient(135deg, #161b22 0%, #1c2128 100%); border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 520px; max-height: 90vh; overflow: hidden; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); animation: slideUp 0.3s ease; display: flex; flex-direction: column; }
-.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 24px; border-bottom: 1px solid #30363d; }
-.modal-header h2 { font-size: 20px; font-weight: 600; margin: 0; color: white; }
-.close-btn { background: transparent; border: none; color: #8b949e; cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; }
-.close-btn:hover { color: white; background: rgba(255, 255, 255, 0.05); }
-.modal-body { padding: 24px; overflow-y: auto; flex: 1; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 20px 24px; border-top: 1px solid #30363d; background: rgba(13, 17, 23, 0.5); }
-.form-group { margin-bottom: 24px; }
-.form-group label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 14px; font-weight: 600; color: white; }
-.label-hint { font-size: 12px; font-weight: 400; color: #8b949e; }
-.form-input, .form-select { width: 100%; padding: 12px 16px; background: rgba(13, 17, 23, 0.8); border: 1px solid #30363d; border-radius: 6px; color: white; font-size: 15px; transition: all 0.2s ease; font-family: inherit; }
-.form-input:focus, .form-select:focus { outline: none; border-color: #4da5dd; box-shadow: 0 0 0 3px rgba(77, 165, 221, 0.1); background: rgba(13, 17, 23, 0.95); }
-.form-select { cursor: pointer; }
-.examples-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #30363d; }
-.examples-label { font-size: 12px; color: #8b949e; margin-bottom: 10px; display: block; }
-.examples-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.example-chip { padding: 6px 12px; background: rgba(77, 165, 221, 0.1); border: 1px solid rgba(77, 165, 221, 0.2); border-radius: 16px; color: #4da5dd; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; }
-.example-chip:hover { background: rgba(77, 165, 221, 0.2); border-color: #4da5dd; transform: translateY(-1px); }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@media (max-width: 768px) { .testing-page { padding: 20px; } .header-content { flex-direction: column; align-items: stretch; } .cards-grid { grid-template-columns: 1fr; } .stats-bar { grid-template-columns: repeat(2, 1fr); } .modal-dialog { width: 95%; margin: 20px; } }
+.content-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.target-title { margin: 0; font-size: 28px; font-weight: 600; color: #fff; }
+.target-subtitle { margin: 6px 0 0 0; font-size: 14px; color: #8b949e; display: flex; align-items: center; gap: 8px; }
+.threshold-badge { background: rgba(210, 153, 34, 0.15); color: #d29922; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+
+.btn-delete { display: flex; align-items: center; gap: 6px; background-color: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: opacity 0.2s; }
+.btn-delete:hover { opacity: 0.8; }
+.card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; }
+.uptime-card { padding: 32px; }
+.uptime-layout { display: flex; align-items: center; justify-content: space-between; gap: 40px; }
+.uptime-bars-container { flex: 1; }
+.uptime-bars { display: flex; gap: 4px; height: 48px; align-items: center; }
+.bar-pill { flex: 1; height: 100%; border-radius: 4px; transition: all 0.2s ease; cursor: pointer; }
+.bar-pill:hover { opacity: 0.7; transform: scaleY(1.1); }
+.check-interval { margin: 12px 0 0 0; font-size: 12px; color: #8b949e; }
+.big-badge { font-size: 24px; font-weight: 700; padding: 12px 32px; border-radius: 30px; color: white !important; text-transform: uppercase; letter-spacing: 1px; }
+.big-badge.up { background-color: #50b83c; box-shadow: 0 4px 15px rgba(80, 184, 60, 0.3); }
+.big-badge.down { background-color: #e74c3c; box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.stat-box { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; text-align: center; }
+.stat-label { margin: 0 0 12px 0; font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-value { margin: 0; font-size: 24px; font-weight: 600; color: #fff; }
+.stat-value .unit { font-size: 14px; color: #8b949e; font-weight: normal; }
+.text-green { color: #50b83c !important; }
+.text-red { color: #e74c3c !important; }
+.text-warning { color: #d29922 !important; }
+.text-gray { color: #8b949e !important; }
+
+.graph-card, .terminal-card { padding: 20px; }
+.graph-header { margin-bottom: 20px; }
+.graph-title { font-size: 14px; color: #8b949e; font-weight: 500; }
+.canvas-wrapper { width: 100%; height: 200px; }
+canvas { width: 100% !important; height: 100% !important; }
+
+.terminal-box { background-color: #000000; border-radius: 8px; padding: 16px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; color: #e6edf3; border: 1px solid #30363d; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); min-height: 200px; }
+.terminal-header { color: #8b949e; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed #30363d; }
+.terminal-waiting { color: #d29922; font-style: italic; animation: pulse 1.5s infinite; }
+.hop-line { display: flex; gap: 15px; padding: 4px 0; line-height: 1.4; }
+.hop-num { width: 25px; text-align: right; color: #8b949e; }
+.hop-ip { color: #58a6ff; min-width: 280px; } 
+.hop-time { color: #3fb950; } 
+.timeout-ip { color: #8b949e; }
+.timeout-text { color: #e74c3c; font-style: italic; }
+
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 999; }
+.modal-dialog { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 400px; max-width: 90%; }
+.modal-header { display: flex; justify-content: space-between; padding: 20px; border-bottom: 1px solid #30363d; }
+.modal-header h2 { margin: 0; font-size: 18px; }
+.close-btn { background: none; border: none; color: #8b949e; font-size: 18px; cursor: pointer; }
+.modal-body { padding: 20px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 8px; font-size: 13px; color: #c9d1d9; }
+.form-control { width: 100%; padding: 10px; background: #0b0e14; border: 1px solid #30363d; color: white; border-radius: 6px; }
+.form-control:focus { outline: none; border-color: #50b83c; }
+.hint { display: block; margin-top: 6px; font-size: 12px; color: #8b949e; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 20px; border-top: 1px solid #30363d; }
+.btn-cancel { background: transparent; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.btn-save { background: #50b83c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+
+@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
 </style>

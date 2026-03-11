@@ -20,7 +20,7 @@ namespace Backend.Controllers
         private readonly HttpClient _httpClient;
         private readonly BackendDbContext _context;
 
-        // 🚨 1. ใส่ Channel Access Token ของบอท NAPMA BOT ตรงนี้ (Token ยาวๆ)
+        // 🚨 Token บอทของคุณ
         private const string BOT_ACCESS_TOKEN = "/5h2TXa+/hD36X32Vp8QeEhFMfyA+iVT7xjqZlzs0H0PE7np1Dpj46Eqq6q1Vc7me9GpvqHGhLHbAL+DI5wjfnXetcAUbcBiVyq9YSM1gqHN4JKP7Ja7enH3jH6bR93slgyRAnWCKmXmxZ2U0mDUvgdB04t89/1O/w1cDnyilFU="; 
 
         public AgentController(BackendDbContext context)
@@ -50,29 +50,31 @@ namespace Backend.Controllers
         {
             if (string.IsNullOrEmpty(request.Target)) return BadRequest("Target is required");
 
-            Console.WriteLine($"[ManualTest] Target: {request.Target}, Type: {request.MetricType ?? "PING"}");
+            string metricType = request.MetricType?.ToUpper() ?? "PING";
+            string input = request.Target.Trim().ToLower();
 
-            // ✅ ดึง User ID จาก Database มารอไว้ก่อน
+            if (metricType == "HTTP" && !input.StartsWith("http://") && !input.StartsWith("https://"))
+                return BadRequest("❌ Invalid Target: HTTP test requires 'http://' or 'https://' prefix.");
+            
+            if ((metricType == "PING" || metricType == "TRACEROUTE") && (input.StartsWith("http://") || input.StartsWith("https://")))
+                return BadRequest($"❌ Invalid Target: {metricType} requires an IP or Domain WITHOUT 'http://' prefix (e.g. 8.8.8.8).");
+
+            Console.WriteLine($"[ManualTest] Target: {request.Target}, Type: {metricType}");
+
             var setting = _context.NotificationSettings.FirstOrDefault();
-
             var sw = Stopwatch.StartNew();
             string status = "Success";
             float value = 0;
             float packetLoss = 0;
             int? statusCode = null;
-            string metricType = request.MetricType?.ToUpper() ?? "PING";
             string message = "Manual test executed";
             object extraDetail = null;
 
             try
             {
-                // 🌐 HTTP Mode
-                if (request.Target.StartsWith("http") || metricType == "HTTP")
+                if (metricType == "HTTP")
                 {
-                    metricType = "HTTP";
                     string httpTarget = request.Target;
-                    if (!httpTarget.StartsWith("http")) httpTarget = "https://" + httpTarget;
-
                     try
                     {
                         var response = await _httpClient.GetAsync(httpTarget);
@@ -91,7 +93,6 @@ namespace Backend.Controllers
                         message = $"HTTP Error: {ex.Message}";
                     }
                 }
-                // 🛤️ Traceroute Mode
                 else if (metricType == "TRACEROUTE")
                 {
                     using var ping = new Ping();
@@ -137,10 +138,8 @@ namespace Backend.Controllers
                     message = $"Traceroute finished ({hops.Count} hops)";
                     extraDetail = new { Hops = hops };
                 }
-                // 📡 Ping Mode
                 else
                 {
-                    metricType = "PING";
                     using var ping = new Ping();
                     try
                     {
@@ -175,11 +174,24 @@ namespace Backend.Controllers
                 message = $"System Error: {ex.Message}";
             }
 
-            // 🚨 2. ตรวจสอบและส่ง Alert ถ้าสถานะผิดปกติ
+            // 🚨 แจ้งเตือนเมื่อล่ม หรือ Latency เกิน Threshold ที่ตั้งไว้
+            bool isAlertNeeded = false;
+            string alertMsg = "";
+
             if (status == "Investigate")
             {
-                string alertMsg = $"⚠️ Alert: {request.Target} is down!\nType: {metricType}\nError: {message}";
-                _ = SendLineNotify(alertMsg, setting); // ส่งแบบ Fire-and-forget ไม่ต้องรอ
+                isAlertNeeded = true;
+                alertMsg = $"⚠️ Alert: {request.Target} is DOWN!\nType: {metricType}\nError: {message}";
+            }
+            else if (request.Threshold.HasValue && value > request.Threshold.Value)
+            {
+                isAlertNeeded = true;
+                alertMsg = $"⚠️ Warning: High Latency detected on {request.Target}\nLatency: {value}ms (Threshold: {request.Threshold.Value}ms)\nType: {metricType}";
+            }
+
+            if (isAlertNeeded)
+            {
+                _ = SendLineNotify(alertMsg, setting);
             }
 
             var metric = new NetworkMetric
@@ -192,9 +204,10 @@ namespace Backend.Controllers
                 Status = status,
                 ExtraData = JsonSerializer.Serialize(new
                 {
-                    Source = "Manual Run (Web Console)",
+                    Source = "Manual Run",
                     SelectedAgent = request.AgentId,
                     Message = message,
+                    Threshold = request.Threshold, // บันทึก Threshold ลง DB เผื่อดูย้อนหลัง
                     Detail = extraDetail
                 }),
                 Timestamp = DateTime.UtcNow
@@ -223,11 +236,21 @@ namespace Backend.Controllers
             if (request.Targets == null || request.Targets.Count == 0)
                 return BadRequest("Targets list is required");
 
+            string metricType = request.MetricType?.ToUpper() ?? "PING";
+
+            foreach (var t in request.Targets)
+            {
+                string input = t.Trim().ToLower();
+                if (metricType == "HTTP" && !input.StartsWith("http://") && !input.StartsWith("https://"))
+                    return BadRequest(new { error = $"❌ Invalid Target '{t}': HTTP test requires 'http://' or 'https://' prefix." });
+                
+                if ((metricType == "PING" || metricType == "TRACEROUTE") && (input.StartsWith("http://") || input.StartsWith("https://")))
+                    return BadRequest(new { error = $"❌ Invalid Target '{t}': {metricType} requires an IP/Domain WITHOUT 'http://' prefix." });
+            }
+
             Console.WriteLine($"[BatchTest] Processing {request.Targets.Count} targets...");
             
-            // ✅ 3. ดึง Setting ออกมา "ก่อน" เข้า Loop Parallel เพื่อป้องกัน DbContext Error
             var setting = _context.NotificationSettings.FirstOrDefault();
-            
             var results = new List<object>();
 
             await Parallel.ForEachAsync(request.Targets, async (target, token) =>
@@ -237,16 +260,13 @@ namespace Backend.Controllers
                 float value = 0;
                 float packetLoss = 0;
                 string message = "";
-                string metricType = request.MetricType?.ToUpper() ?? "PING";
                 int? statusCode = null;
                 object extraDetail = null;
 
                 try
                 {
-                    // 🌐 HTTP
-                    if (metricType == "HTTP" || target.StartsWith("http"))
+                    if (metricType == "HTTP")
                     {
-                        metricType = "HTTP";
                         string url = target.StartsWith("http") ? target : "https://" + target;
                         var response = await _httpClient.GetAsync(url);
                         sw.Stop();
@@ -256,7 +276,6 @@ namespace Backend.Controllers
                         packetLoss = response.IsSuccessStatusCode ? 0 : 1;
                         message = $"HTTP {statusCode} ({response.ReasonPhrase})";
                     }
-                    // 🛤️ TRACEROUTE
                     else if (metricType == "TRACEROUTE")
                     {
                         using var ping = new Ping();
@@ -288,10 +307,8 @@ namespace Backend.Controllers
                         message = $"Traceroute finished ({hops.Count} hops)";
                         extraDetail = new { Hops = hops };
                     }
-                    // 📡 PING (Default)
                     else 
                     {
-                        metricType = "PING";
                         using var ping = new Ping();
                         var reply = await ping.SendPingAsync(target, 5000);
                         sw.Stop();
@@ -317,10 +334,23 @@ namespace Backend.Controllers
                     message = ex.Message;
                 }
 
-                // 🚨 4. ส่ง Alert (ใช้ค่า setting ที่ดึงมาแล้ว)
+                // 🚨 แจ้งเตือนเมื่อล่ม หรือ Latency เกิน Threshold ที่ตั้งไว้ (ใน Batch)
+                bool isAlertNeeded = false;
+                string alertMsg = "";
+
                 if (status == "Investigate")
                 {
-                    string alertMsg = $"⚠️ Batch Alert: {target} is down!\nType: {metricType}\nError: {message}";
+                    isAlertNeeded = true;
+                    alertMsg = $"⚠️ Alert: {target} is DOWN!\nType: {metricType}\nError: {message}";
+                }
+                else if (request.Threshold.HasValue && value > request.Threshold.Value)
+                {
+                    isAlertNeeded = true;
+                    alertMsg = $"⚠️ Warning: High Latency detected on {target}\nLatency: {value}ms (Threshold: {request.Threshold.Value}ms)\nType: {metricType}";
+                }
+
+                if (isAlertNeeded)
+                {
                     _ = SendLineNotify(alertMsg, setting);
                 }
 
@@ -336,6 +366,7 @@ namespace Backend.Controllers
                         AgentId = request.AgentId, 
                         Message = message, 
                         Source = "Batch Run",
+                        Threshold = request.Threshold, // บันทึก Threshold ลง DB เผื่อดูย้อนหลัง
                         Hops = (extraDetail as dynamic)?.Hops 
                     }),
                     Timestamp = DateTime.UtcNow
@@ -363,16 +394,12 @@ namespace Backend.Controllers
         {
             try
             {
-                // ตรวจสอบว่าเปิดใช้งานและมี User ID (ที่เก็บในช่อง LineToken) หรือไม่
                 if (setting == null || !setting.IsEnable || string.IsNullOrEmpty(setting.LineToken)) 
                 {
                     return;
                 }
 
-                // ใช้ Token ของบอทที่ Hardcode ไว้
                 string botToken = BOT_ACCESS_TOKEN;
-                
-                // ใช้ User ID ที่ได้จาก DB (ช่อง LineToken)
                 string targetUserId = setting.LineToken;
 
                 using var client = new HttpClient();
@@ -400,12 +427,13 @@ namespace Backend.Controllers
         }
     }
 
-    // 📦 Request Models
+    // 📦 Request Models (🚨 เพิ่ม Threshold ตรงนี้)
     public class ManualTestRequest
     {
         public string AgentId { get; set; }
         public string Target { get; set; }
         public string MetricType { get; set; }
+        public int? Threshold { get; set; } // ค่าที่จะรับมาจาก Vue.js
     }
 
     public class MultiTargetRequest
@@ -413,5 +441,6 @@ namespace Backend.Controllers
         public string AgentId { get; set; }
         public List<string> Targets { get; set; }
         public string MetricType { get; set; }
+        public int? Threshold { get; set; } // ค่าที่จะรับมาจาก Vue.js
     }
 }
