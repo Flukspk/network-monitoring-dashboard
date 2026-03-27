@@ -33,7 +33,6 @@
           autocomplete="current-password"
         />
 
-        <!-- Custom Modal/Message Box for Status Messages -->
         <div v-if="message" :class="['message-box', messageType]">
           {{ message }}
         </div>
@@ -47,13 +46,6 @@
           >Contact support</a
         >
       </p>
-      <button
-        class="btn-ghost skip-btn"
-        type="button"
-        @click="continueWithoutAuth"
-      >
-        Preview dashboard without login
-      </button>
     </div>
   </div>
 </template>
@@ -68,8 +60,13 @@ const password = ref("");
 const message = ref("");
 const messageType = ref("");
 
-// CRITICAL FIX: Set the default API port to 5001, as exposed by Docker.
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+// CRITICAL FIX: Set the default API port to 5050 to match your C# Backend
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (window.location.port === "8080" || window.location.hostname !== "localhost") return "/api";
+  return "http://localhost:5050";
+};
+const API_BASE_URL = getApiBaseUrl();
 
 function showMessage(type, text) {
     messageType.value = type;
@@ -82,8 +79,8 @@ function showMessage(type, text) {
 async function onSubmit() {
   message.value = ""; // Clear previous messages
   try {
-    // FIX HERE: Changed from `/api/auth/login` to `/auth/login` to resolve the 404 double-path error.
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    // FIX HERE: Using the correct endpoint matching the UsersController in C#
+    const response = await fetch(`${API_BASE_URL}/users/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ Username: email.value, Password: password.value }),
@@ -94,21 +91,18 @@ async function onSubmit() {
       localStorage.setItem("user", JSON.stringify(data));
       router.push("/dashboard");
     } else if (response.status === 401) {
-      // Login failed due to invalid credentials
-      showMessage("error", "Login failed. Invalid username or password.");
+      const errorData = await response.json();
+      // โชว์ข้อความ Error ที่ส่งมาจาก C# (เช่น รหัสผิด หรือยังไม่ confirm email)
+      showMessage("error", errorData.message || "Login failed. Invalid username or password.");
     } else {
       // Other server errors (e.g., 500)
       showMessage("error", "Login failed. Please try again later (Status: " + response.status + ").");
     }
   } catch (err) {
     console.error("Error logging in:", err);
-    // Error connecting to the API_BASE_URL (i.e., Docker is not running or port is wrong)
-    showMessage("error", "Error connecting to server. Check if Docker is running on port 5001.");
+    // Error connecting to the API_BASE_URL
+    showMessage("error", "Error connecting to server. Check if Backend is running on port 5050.");
   }
-}
-
-function continueWithoutAuth() {
-  router.push("/dashboard");
 }
 </script>
 
@@ -213,11 +207,6 @@ function continueWithoutAuth() {
 
 .support-link:hover {
   text-decoration: underline;
-}
-
-.skip-btn {
-  width: 100%;
-  margin-top: 12px;
 }
 
 /* New styles for message box */

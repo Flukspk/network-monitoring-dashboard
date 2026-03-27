@@ -13,6 +13,6 @@ namespace Backend.Data
         public DbSet<NetworkMetric> NetworkMetrics { get; set; }
 
         public DbSet<Agent> Agents { get; set; }
-        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<NotificationSetting> NotificationSettings { get; set; }
     }
 }

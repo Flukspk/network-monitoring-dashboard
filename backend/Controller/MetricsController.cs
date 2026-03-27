@@ -91,7 +91,7 @@ namespace Backend.Controllers
             if (!string.IsNullOrEmpty(target)) query = query.Where(m => m.Target == target);
             if (!string.IsNullOrEmpty(type)) query = query.Where(m => m.MetricType == type);
 
-            var data = query.OrderByDescending(m => m.Timestamp).Take(20).ToList();
+            var data = query.OrderByDescending(m => m.Timestamp).Take(500).ToList();
             return Ok(data);
         }
     }
