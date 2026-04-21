@@ -6,6 +6,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Backend.Controllers
 {
@@ -77,11 +78,118 @@ namespace Backend.Controllers
         [HttpGet("latest")]
         public IActionResult GetLatest()
         {
-             var latest = _context.NetworkMetrics
-                .GroupBy(p => p.Target)
-                .Select(g => g.OrderByDescending(p => p.Timestamp).FirstOrDefault())
-                .ToList();
+            var latest = _context.NetworkMetrics
+               .GroupBy(p => new { p.Target, p.MetricType })
+               .Select(g => g.OrderByDescending(p => p.Timestamp).FirstOrDefault())
+               .ToList();
             return Ok(latest);
+        }
+
+        [HttpGet("summary")]
+        public IActionResult GetSummary([FromQuery] int window = 200)
+        {
+            window = Math.Clamp(window, 20, 2000);
+
+            List<(string Target, string MetricType)> keys;
+            if (_activeTargets.Count > 0)
+            {
+                keys = _activeTargets
+                    .Select(t =>
+                    {
+                        var parts = t.Split('|');
+                        var target = parts[0];
+                        var type = parts.Length > 1 ? parts[1] : "PING";
+                        return (Target: target, MetricType: type);
+                    })
+                    .Distinct()
+                    .ToList();
+            }
+            else
+            {
+                keys = _context.NetworkMetrics
+                    .OrderByDescending(m => m.Timestamp)
+                    .Take(500)
+                    .Select(m => new { m.Target, m.MetricType })
+                    .Distinct()
+                    .AsEnumerable()
+                    .Select(x => (x.Target, x.MetricType))
+                    .ToList();
+            }
+
+            var now = DateTime.UtcNow;
+            var summaries = new List<MonitorSummary>();
+
+            foreach (var (target, metricType) in keys)
+            {
+                var metrics = _context.NetworkMetrics
+                    .Where(m => m.Target == target && m.MetricType == metricType)
+                    .OrderByDescending(m => m.Timestamp)
+                    .Take(window)
+                    .ToList();
+
+                if (metrics.Count == 0) continue;
+
+                var latest = metrics.OrderByDescending(m => m.Timestamp).First();
+                var earliest = _context.NetworkMetrics
+                    .Where(m => m.Target == target && m.MetricType == metricType)
+                    .OrderBy(m => m.Timestamp)
+                    .Select(m => m.Timestamp)
+                    .FirstOrDefault();
+
+                int? threshold = null;
+                string? agentName = null;
+                try
+                {
+                    var extra = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(latest.ExtraData ?? "{}");
+                    if (extra != null)
+                    {
+                        if (extra.TryGetValue("Threshold", out var th) && th.ValueKind == JsonValueKind.Number && th.TryGetInt32(out var thVal))
+                        {
+                            threshold = thVal;
+                        }
+                        if (extra.TryGetValue("AgentName", out var an) && an.ValueKind == JsonValueKind.String)
+                        {
+                            agentName = an.GetString();
+                        }
+                    }
+                }
+                catch { }
+
+                var valid = metrics
+                    .Where(m => m.Value > 0)
+                    .Select(m => m.Value)
+                    .ToList();
+                var avg = valid.Count > 0 ? valid.Average() : 0;
+
+                var isFail = latest.Status != "Success" && latest.Status != "Pending";
+                var durationSeconds = earliest == default ? 0 : (now - earliest).TotalSeconds;
+
+                summaries.Add(new MonitorSummary
+                {
+                    Target = target,
+                    MetricType = metricType,
+                    AgentName = agentName,
+                    Status = latest.Status,
+                    LatestValue = latest.Value,
+                    AvgValue = avg,
+                    PacketLoss = latest.PacketLoss,
+                    Threshold = threshold,
+                    StartTime = earliest == default ? latest.Timestamp : earliest,
+                    LastProbe = latest.Timestamp,
+                    DurationSeconds = durationSeconds,
+                    IsFail = isFail
+                });
+            }
+
+            var result = new
+            {
+                total = summaries.Count,
+                active = summaries.Count,
+                fail = summaries.Count(s => s.IsFail),
+                data = summaries.OrderByDescending(s => s.LastProbe).ToList()
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("filter")]
@@ -101,5 +209,21 @@ namespace Backend.Controllers
     {
         public string Target { get; set; }
         public string Type { get; set; }
+    }
+
+    public class MonitorSummary
+    {
+        public string Target { get; set; } = string.Empty;
+        public string MetricType { get; set; } = string.Empty;
+        public string? AgentName { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public double LatestValue { get; set; }
+        public double AvgValue { get; set; }
+        public float PacketLoss { get; set; }
+        public int? Threshold { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime LastProbe { get; set; }
+        public double DurationSeconds { get; set; }
+        public bool IsFail { get; set; }
     }
 }

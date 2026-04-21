@@ -24,12 +24,12 @@ const routes = [
     path: "/",
     component: MainLayout,
     children: [
-      { path: "dashboard", name: "Dashboard", component: Dashboard },
-      { path: "test", name: "Testing", component: Testing },
-      { path: "event", name: "Events", component: Events },
-      { path: "alert", name: "Alerts", component: Alerts },
-      { path: "users", name: "Users", component: Users }, 
-      { path: "settings", name: "Settings", component: SettingsPage }, 
+      { path: "dashboard", name: "Dashboard", component: Dashboard, meta: { requiresAuth: true } },
+      { path: "test", name: "Testing", component: Testing, meta: { requiresAuth: true } },
+      { path: "event", name: "Events", component: Events, meta: { requiresAuth: true } },
+      { path: "alert", name: "Alerts", component: Alerts, meta: { requiresAuth: true } },
+      { path: "users", name: "Users", component: Users, meta: { requiresAuth: true, roles: [1] } }, 
+      { path: "settings", name: "Settings", component: SettingsPage, meta: { requiresAuth: true, roles: [1] } }, 
     ],
   },
 ];
@@ -37,6 +37,36 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+});
+
+const getCurrentUser = () => {
+  try {
+    const raw = localStorage.getItem("user");
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+router.beforeEach((to) => {
+  const isPublic = to.path === "/login" || to.path === "/accept-invite";
+  const user = getCurrentUser();
+  const isLoggedIn = !!user?.userId;
+
+  if (!isPublic && to.meta?.requiresAuth && !isLoggedIn) {
+    return { path: "/login" };
+  }
+
+  const allowedRoles = to.meta?.roles;
+  if (allowedRoles && allowedRoles.length > 0) {
+    const roleId = user?.roleId;
+    if (!allowedRoles.includes(roleId)) {
+      return { path: "/dashboard" };
+    }
+  }
+
+  return true;
 });
 
 export default router;

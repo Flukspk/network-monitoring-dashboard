@@ -44,20 +44,28 @@
         <p v-if="showIssuesOnly" class="text-green" style="margin-top:8px;">Awesome! Your network is 100% healthy right now.</p>
       </div>
 
-      <div class="table-header" v-if="filteredEvents.length > 0">
-        <div class="th col-target">TARGET INFO</div>
-        <div class="th col-incident">LATEST EVENT / ANOMALY</div>
-        <div class="th col-stats">AVG STATS</div>
-        <div class="th col-status">STATUS</div>
-        <div class="th col-action"></div>
-      </div>
+      <div v-for="section in groupedByType" :key="section.type" class="type-section" v-show="section.items.length > 0">
+        <div class="type-header">
+          <div class="type-title">
+            <span class="g-badge" :class="section.badgeClass">{{ section.type }}</span>
+            <span class="type-count">{{ section.items.length }} targets</span>
+          </div>
+        </div>
 
-      <div 
-        v-for="group in filteredEvents" 
-        :key="group.target + group.metricType" 
-        class="g-panel event-row" 
-        :class="{ 'expanded': group.expanded, 'has-issue': group.hasError }"
-      >
+        <div class="table-header">
+          <div class="th col-target">TARGET INFO</div>
+          <div class="th col-incident">LATEST EVENT / ANOMALY</div>
+          <div class="th col-stats">AVG STATS</div>
+          <div class="th col-status">STATUS</div>
+          <div class="th col-action"></div>
+        </div>
+
+        <div 
+          v-for="group in section.items" 
+          :key="group.target + group.metricType" 
+          class="g-panel event-row" 
+          :class="{ 'expanded': group.expanded, 'has-issue': group.hasError }"
+        >
         
         <div class="main-row" @click="toggleGroup(group)">
           <div class="col-target">
@@ -136,6 +144,7 @@
           </table>
         </div>
 
+        </div>
       </div>
     </section>
   </div>
@@ -247,6 +256,24 @@ const filteredEvents = computed(() => {
   return groupedEvents.value;
 })
 
+const groupedByType = computed(() => {
+  const types = ["PING", "HTTP", "TRACEROUTE"];
+  const items = filteredEvents.value || [];
+
+  return types.map(t => {
+    let badgeClass = 'bg-blue-dim';
+    if (t === 'PING') badgeClass = 'bg-green-dim';
+    else if (t === 'HTTP') badgeClass = 'bg-purple-dim';
+    else if (t === 'TRACEROUTE') badgeClass = 'bg-orange-dim';
+
+    return {
+      type: t,
+      badgeClass,
+      items: items.filter(i => i.metricType === t)
+    };
+  });
+})
+
 const toggleGroup = (group) => {
     group.expanded = !group.expanded
 }
@@ -314,6 +341,15 @@ onMounted(() => {
 .badge-count { font-size: 11px; color: #8e99a8; }
 .g-badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: #fff; letter-spacing: 0.5px; }
 .bg-blue-dim { background: rgba(50, 116, 217, 0.2); color: #5794f2; border: 1px solid rgba(50, 116, 217, 0.3); }
+
+.bg-green-dim { background: rgba(115, 191, 105, 0.15); color: #73bf69; border: 1px solid rgba(115, 191, 105, 0.28); }
+.bg-purple-dim { background: rgba(143, 97, 255, 0.15); color: #a78bfa; border: 1px solid rgba(143, 97, 255, 0.28); }
+.bg-orange-dim { background: rgba(255, 152, 48, 0.14); color: #ff9830; border: 1px solid rgba(255, 152, 48, 0.28); }
+
+.type-section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.type-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 2px 2px 2px; }
+.type-title { display: flex; align-items: center; gap: 10px; }
+.type-count { font-size: 12px; color: #8e99a8; }
 
 /* 🚨 2. Incident Box (บอกว่าเกิดอะไรขึ้น) */
 .incident-box { display: flex; flex-direction: column; gap: 3px; }

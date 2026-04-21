@@ -1,73 +1,121 @@
 <template>
-    <div class="page-container">
-      <div class="ambient-glow top-left"></div>
-      <div class="ambient-glow bottom-right"></div>
-  
-      <header class="page-header">
-        <div class="header-content">
-          <div>
-            <p class="eyebrow">Configuration</p>
-            <h1>Notification Settings</h1>
-            <p class="subtitle">Manage how you receive critical alerts via NAPMA BOT.</p>
-          </div>
+  <div class="page-container">
+    <div class="ambient-glow top-left"></div>
+    <div class="ambient-glow bottom-right"></div>
+
+    <header class="page-header">
+      <div class="header-content">
+        <div>
+          <p class="eyebrow">Configuration</p>
+          <h1>Notification Settings</h1>
+          <p class="subtitle">Manage how you receive critical alerts via NAPMA BOT.</p>
         </div>
-      </header>
-  
-      <main class="page-content">
-          <div class="settings-card-container">
-              <div class="settings-card">
-                  <div class="card-header">
-                      <h3>Alert Receiver</h3>
-                      <p class="card-subtitle">Specify who should receive the alerts.</p>
-                  </div>
-  
-                  <div class="card-body">
-                      <div class="form-group">
-                          <label for="lineToken">
-                              <span class="label-text">Your LINE User ID</span>
-                          </label>
-                          <div class="input-wrapper">
-                              <span class="input-icon">👤</span>
-                              <input 
-                              id="lineToken"
-                              v-model="settings.lineToken" 
-                              type="text" 
-                              class="form-input" 
-                              placeholder="e.g. U1234567890abcdef..."
-                              />
-                          </div>
-                           <small class="hint">
-                              ⚠️ <strong>Not your ID/Phone Number.</strong> It starts with 'U'.<br>
-                              👉 To get this ID: Add friend <strong>@977cpffa</strong> and type anything to it.
-                          </small>
-                      </div>
-  
-                       <div class="form-group-checkbox">
-                           <label class="custom-checkbox">
-                               <input type="checkbox" id="enableAlerts" v-model="settings.isEnable">
-                               <span class="checkmark"></span>
-                               <span class="label-text">Enable Notification System</span>
-                           </label>
-                      </div>
-  
-                      <div class="form-actions">
-                          <button class="btn-save" @click="saveSettings" :disabled="loading">
-                              <span v-if="loading" class="loading-spinner"></span>
-                              <span v-else>Save Configuration</span>
-                          </button>
-                      </div>
-  
-                       <transition name="fade">
-                          <p v-if="message" :class="['feedback-message', msgClass]">
-                              {{ message }}
-                          </p>
-                       </transition>
-                  </div>
-              </div>
+        <div class="status-chip" :class="settings.isEnable ? 'on' : 'off'">
+          <span class="chip-dot"></span>
+          {{ settings.isEnable ? 'Notifications Enabled' : 'Notifications Disabled' }}
+        </div>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <div class="grid">
+        <section class="settings-card">
+          <div class="card-header">
+            <div>
+              <h3>Alert Receiver</h3>
+              <p class="card-subtitle">Specify who should receive the alerts.</p>
+            </div>
           </div>
-      </main>
-    </div>
-  </template>
+
+          <div class="card-body">
+            <div class="form-group">
+              <label for="lineToken">
+                <span class="label-text">Your LINE User ID</span>
+              </label>
+              <div class="input-wrapper">
+                <span class="input-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </span>
+                <input
+                  id="lineToken"
+                  v-model="settings.lineToken"
+                  type="text"
+                  class="form-input"
+                  placeholder="e.g. U1234567890abcdef..."
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="hint-panel">
+                <div class="hint-title">How to get your LINE User ID</div>
+                <div class="hint-body">
+                  <div class="hint-row">
+                    <span class="hint-badge">1</span>
+                    <span>Add friend <strong>@977cpffa</strong></span>
+                  </div>
+                  <div class="hint-row">
+                    <span class="hint-badge">2</span>
+                    <span>Type anything to the bot to receive your ID</span>
+                  </div>
+                  <div class="hint-row subtle">
+                    <span class="hint-badge">!</span>
+                    <span>It starts with <strong>U</strong> (not phone number)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group-checkbox">
+              <label class="toggle">
+                <input type="checkbox" id="enableAlerts" v-model="settings.isEnable" />
+                <span class="toggle-track" aria-hidden="true">
+                  <span class="toggle-thumb"></span>
+                </span>
+                <span class="toggle-label">
+                  <span class="label-text">Enable Notification System</span>
+                  <span class="label-subtext">Send alerts automatically when metrics exceed thresholds.</span>
+                </span>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn-save" @click="saveSettings" :disabled="loading">
+                <span v-if="loading" class="loading-spinner"></span>
+                <span v-else>Save Configuration</span>
+              </button>
+              <transition name="fade">
+                <p v-if="message" :class="['feedback-message', msgClass]">
+                  {{ message }}
+                </p>
+              </transition>
+            </div>
+          </div>
+        </section>
+
+        <aside class="info-card">
+          <div class="info-header">What gets notified?</div>
+          <div class="info-body">
+            <div class="info-item">
+              <div class="info-title">Down / Error</div>
+              <div class="info-desc">Target is unreachable or HTTP returns error.</div>
+            </div>
+            <div class="info-item">
+              <div class="info-title">High Latency</div>
+              <div class="info-desc">Latency exceeds per-monitor threshold configured in Testing.</div>
+            </div>
+            <div class="info-divider"></div>
+            <div class="info-note">
+              Tip: Add multiple agents on different VMs to simulate different locations.
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</template>
   
   <script setup>
   import { ref, onMounted } from 'vue';
@@ -119,11 +167,6 @@
   </script>
   
   <style scoped>
-  /* ... CSS เดิม ... */
-  /* เพิ่ม CSS ให้ Hint ดูเด่นขึ้นนิดนึง */
-  .hint { display: block; margin-top: 8px; color: #8b949e; font-size: 13px; line-height: 1.5; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; border-left: 3px solid #4da5dd; }
-  /* ... CSS เดิม ... */
-  /* ใส่ CSS เดิมทั้งหมดต่อท้ายได้เลยครับ */
   .page-container {
     min-height: 100vh;
     background: #050608; 
@@ -162,6 +205,13 @@
     position: relative;
     z-index: 1;
   }
+
+  .header-content {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+  }
   
   .eyebrow {
     font-size: 12px;
@@ -184,6 +234,22 @@
     color: #8b949e;
     margin: 0;
   }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid #30363d;
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .status-chip.on { color: #73bf69; border-color: rgba(115, 191, 105, 0.35); background: rgba(115, 191, 105, 0.10); }
+  .status-chip.off { color: #f2495c; border-color: rgba(242, 73, 92, 0.35); background: rgba(242, 73, 92, 0.10); }
+  .chip-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; }
   
   /* Card Styling */
   .page-content {
@@ -192,16 +258,20 @@
       position: relative;
       z-index: 1;
   }
-  
-  .settings-card-container {
-      width: 100%;
-      max-width: 500px; /* ปรับให้แคบลงนิดหน่อยเพราะเหลือ input เดียว */
+
+  .grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 18px;
+    align-items: start;
+    padding-bottom: 48px;
   }
   
   .settings-card {
     background: #161b22;
     border: 1px solid #30363d;
-    border-radius: 8px;
+    border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
   }
@@ -209,7 +279,11 @@
   .card-header {
       padding: 24px;
       border-bottom: 1px solid #30363d;
-      background: rgba(255,255,255,0.02);
+      background: linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
   }
   
   .card-header h3 { margin: 0 0 4px 0; color: white; font-size: 16px; }
@@ -219,10 +293,10 @@
   
   /* Inputs */
   .form-group { margin-bottom: 24px; }
-  .label-text { display: block; margin-bottom: 8px; font-weight: 600; font-size: 13px; color: #e6edf3; }
+  .label-text { display: block; margin-bottom: 8px; font-weight: 700; font-size: 13px; color: #e6edf3; }
   
   .input-wrapper { position: relative; display: flex; align-items: center; }
-  .input-icon { position: absolute; left: 12px; font-size: 16px; opacity: 0.7; }
+  .input-icon { position: absolute; left: 12px; opacity: 0.8; color: #8b949e; display: inline-flex; align-items: center; }
   
   .form-input {
     width: 100%;
@@ -237,34 +311,74 @@
   
   .form-input:focus {
       outline: none;
-      border-color: #06c755; /* สีเขียว LINE */
-      box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.15);
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+  }
+
+  .hint-panel {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    background: rgba(88, 166, 255, 0.06);
+  }
+  .hint-title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9cc7ff;
+    margin-bottom: 10px;
+  }
+  .hint-body { display: flex; flex-direction: column; gap: 8px; }
+  .hint-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #c9d1d9; }
+  .hint-row.subtle { color: #8b949e; }
+  .hint-badge {
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12px;
+    color: #c9d1d9;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(0, 0, 0, 0.25);
+    flex: 0 0 auto;
   }
   
   /* Checkbox & Button */
-  .form-group-checkbox { margin-bottom: 32px; padding-top: 16px; border-top: 1px solid #30363d; }
-  .custom-checkbox { display: inline-flex; align-items: center; cursor: pointer; position: relative; }
-  .custom-checkbox input { position: absolute; opacity: 0; }
-  .checkmark {
-      height: 18px; width: 18px;
-      background-color: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      margin-right: 10px;
-      transition: all 0.2s;
+  .form-group-checkbox { margin-bottom: 22px; padding-top: 18px; border-top: 1px solid #30363d; }
+  .toggle { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; cursor: pointer; }
+  .toggle input { position: absolute; opacity: 0; }
+  .toggle-track {
+    width: 46px;
+    height: 26px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid #30363d;
+    border-radius: 999px;
+    position: relative;
+    transition: all 0.15s ease;
+    flex: 0 0 auto;
   }
-  .custom-checkbox:hover .checkmark { border-color: #8b949e; }
-  .custom-checkbox input:checked ~ .checkmark { background-color: #238636; border-color: #238636; }
-  .checkmark:after { content: ""; position: absolute; display: none; }
-  .custom-checkbox input:checked ~ .checkmark:after { display: block; }
-  .custom-checkbox .checkmark:after {
-      left: 6px; top: 2px; width: 4px; height: 9px;
-      border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  .toggle-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: #c9d1d9;
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    transition: all 0.15s ease;
   }
-  .checkbox-hint { margin: 4px 0 0 28px; font-size: 12px; color: #8b949e; }
+  .toggle-label { display: flex; flex-direction: column; gap: 3px; padding-top: 1px; }
+  .label-subtext { font-size: 12px; color: #8b949e; }
+  .toggle:has(input:checked) .toggle-track { background: rgba(35, 134, 54, 0.20); border-color: rgba(35, 134, 54, 0.45); }
+  .toggle:has(input:checked) .toggle-thumb { left: 22px; background: #3fb950; }
   
   .btn-save {
-    background: #238636;
+    background: linear-gradient(90deg, #238636 0%, #2ea043 100%);
     color: white;
     border: none;
     padding: 10px 24px;
@@ -294,4 +408,29 @@
       border-radius: 50%; animation: spin 0.8s linear infinite;
   }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  </style>
+
+  .info-card {
+    background: rgba(22, 27, 34, 0.75);
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+  }
+  .info-header {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid #30363d;
+    color: #e6edf3;
+    font-weight: 700;
+  }
+  .info-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .info-item { padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.20); }
+  .info-title { font-size: 13px; font-weight: 800; color: #c9d1d9; margin-bottom: 4px; }
+  .info-desc { font-size: 13px; color: #8b949e; }
+  .info-divider { height: 1px; background: rgba(255,255,255,0.08); }
+  .info-note { font-size: 13px; color: #8b949e; line-height: 1.45; }
+
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: 1fr; }
+    .status-chip { display: none; }
+  }
+</style>

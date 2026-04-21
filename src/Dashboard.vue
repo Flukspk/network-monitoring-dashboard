@@ -29,9 +29,6 @@
       >
         <div class="metric-head">
           <p class="metric-label">{{ metric.label }}</p>
-          <span class="trend-pill" :class="metric.trendClass">
-            {{ metric.delta }}
-          </span>
         </div>
         <h2 class="metric-value">{{ metric.value }}</h2>
         <p class="metric-subtitle">{{ metric.caption }}</p>
@@ -68,7 +65,10 @@
                 {{ target.status }}
               </span>
             </div>
-            <p class="probe-meta">{{ target.metricType }}</p>
+            <p class="probe-meta">
+              {{ target.metricType }}
+              <span v-if="target.agentName" class="text-muted"> • {{ target.agentName }}</span>
+            </p>
             <div class="probe-metrics">
               <div>
                 <p class="probe-label">Latency</p>
@@ -79,10 +79,25 @@
                 <p class="probe-value">{{ target.packetLoss }}%</p>
               </div>
               <div>
-                <p class="probe-label">Time</p>
+                <p class="probe-label">Last probe</p>
                 <p class="probe-value">
-                  {{ new Date(target.timestamp).toLocaleTimeString() }}
+                  {{ new Date(target.lastProbe).toLocaleTimeString() }}
                 </p>
+              </div>
+            </div>
+
+            <div class="probe-metrics" style="margin-top: 14px;">
+              <div>
+                <p class="probe-label">Avg</p>
+                <p class="probe-value">{{ target.avgValue }} ms</p>
+              </div>
+              <div>
+                <p class="probe-label">Threshold</p>
+                <p class="probe-value">{{ target.threshold ?? '-' }}</p>
+              </div>
+              <div>
+                <p class="probe-label">Duration</p>
+                <p class="probe-value">{{ target.durationText }}</p>
               </div>
             </div>
           </div>
@@ -160,7 +175,7 @@
               <p class="location-meta text-muted">Active monitored endpoints</p>
             </div>
             <div class="location-score">
-              <strong>{{ totalTargets }}</strong>
+              <strong>{{ activeTargets }}/{{ totalTargets }}</strong>
             </div>
           </li>
           <li>
@@ -194,7 +209,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import axios from "axios";
 
 // --- State ---
-const rawData = ref([]);
+const summary = ref({ total: 0, active: 0, fail: 0, data: [] });
 const timer = ref(null);
 
 // --- Config ---
@@ -212,12 +227,11 @@ const API_URL = getApiBaseUrl();
 // --- Data Fetching ---
 const fetchDashboardData = async () => {
   try {
-    // ใช้ API /latest ที่คุณมีอยู่แล้ว เพื่อดึงสถานะล่าสุดของทุก Target
     const endpoint = API_URL.startsWith("/")
-      ? `${API_URL}/metrics/latest`
-      : `${API_URL}/api/metrics/latest`;
+      ? `${API_URL}/metrics/summary`
+      : `${API_URL}/api/metrics/summary`;
     const res = await axios.get(endpoint);
-    rawData.value = res.data;
+    summary.value = res.data;
   } catch (err) {
     console.error("Dashboard fetch error:", err);
   }
@@ -227,76 +241,58 @@ const fetchDashboardData = async () => {
 
 // 1. Metrics Cards (4 กล่องบน)
 const dashboardMetrics = computed(() => {
-  if (rawData.value.length === 0)
+  if (!summary.value.data || summary.value.data.length === 0)
     return [
-      { label: "Mean Latency", value: "0 ms", progress: 0 },
-      { label: "Avg Packet Loss", value: "0%", progress: 0 },
-      { label: "Active Targets", value: "0", progress: 0 },
-      { label: "System Health", value: "0%", progress: 0 },
+      { label: "Active Targets", value: "0/0", progress: 0 },
+      { label: "Failing Targets", value: "0", progress: 0 },
     ];
 
-  // Calculate Average Latency
-  const totalLatency = rawData.value.reduce((acc, curr) => acc + curr.value, 0);
-  const avgLatency = Math.round(totalLatency / rawData.value.length);
+  const data = summary.value.data;
 
-  // Find max latency for progress bar scaling
-  const maxLatency = Math.max(...rawData.value.map((i) => i.value), 100);
-
-  // Calculate Average Packet Loss
-  const totalLoss = rawData.value.reduce(
-    (acc, curr) => acc + curr.packetLoss,
-    0
-  );
-  const avgLoss = (totalLoss / rawData.value.length).toFixed(2);
-
-  // Success Rate
-  const successCount = rawData.value.filter(
-    (i) => i.status === "Success"
-  ).length;
-  const healthRate = Math.round((successCount / rawData.value.length) * 100);
+  const failCount = data.filter((i) => i.status !== "Success" && i.status !== "Pending").length;
 
   return [
     {
-      label: "Mean Latency",
-      value: `${avgLatency.toLocaleString()} ms`,
-      caption: "Global average",
-      delta:
-        avgLatency < 50 ? "Healthy" : avgLatency < 200 ? "Moderate" : "High",
-      trendClass:
-        avgLatency < 50 ? "up" : avgLatency < 200 ? "warning" : "down",
-      progress: Math.min((avgLatency / Math.max(maxLatency, 100)) * 100, 100), // Scale dynamically
-    },
-    {
-      label: "Avg Packet Loss",
-      value: `${avgLoss}%`,
-      caption: "Across all targets",
-      delta: avgLoss < 1 ? "Good" : "Issues",
-      trendClass: avgLoss < 1 ? "up" : "down",
-      progress: Math.min(avgLoss * 10, 100),
-    },
-    {
       label: "Active Targets",
-      value: rawData.value.length.toString(),
+      value: `${summary.value.active}/${summary.value.total}`,
       caption: "Monitored endpoints",
-      delta: "Active",
-      trendClass: "up",
       progress: 100,
     },
     {
-      label: "System Health",
-      value: `${healthRate}%`,
-      caption: "Success rate",
-      delta: healthRate > 90 ? "Stable" : "Degraded",
-      trendClass: healthRate > 90 ? "up" : "down",
-      progress: healthRate,
+      label: "Failing Targets",
+      value: `${failCount}`,
+      caption: "Need attention",
+      progress: data.length > 0 ? Math.min((failCount / data.length) * 100, 100) : 0,
     },
   ];
 });
 
 // 2. Target Health List
 const targetHealth = computed(() => {
-  return rawData.value.map((item) => ({
-    ...item,
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return "-";
+    const s = Math.floor(seconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${ss}s`;
+    return `${ss}s`;
+  };
+
+  return (summary.value.data || []).map((item) => ({
+    target: item.target,
+    metricType: item.metricType,
+    agentName: item.agentName,
+    status: item.status,
+    value: Math.round(item.latestValue ?? 0),
+    avgValue: Math.round(item.avgValue ?? 0),
+    packetLoss: Math.round(((item.packetLoss ?? 0) * 100) * 100) / 100,
+    threshold: item.threshold,
+    startTime: item.startTime,
+    lastProbe: item.lastProbe,
+    durationSeconds: item.durationSeconds,
+    durationText: formatDuration(item.durationSeconds),
     statusClass: item.status === "Success" ? "status-success" : "status-danger",
   }));
 });
@@ -304,19 +300,16 @@ const targetHealth = computed(() => {
 // 3. Slowest Targets (Top 5)
 const slowestTargets = computed(() => {
   // Copy array and sort by value descending
-  return [...rawData.value].sort((a, b) => b.value - a.value).slice(0, 5);
+  return [...targetHealth.value]
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+    .slice(0, 5);
 });
 
 // 4. Counts
-const totalTargets = computed(() => rawData.value.length);
-const healthyCount = computed(
-  () => rawData.value.filter((i) => i.status === "Success").length
-);
-const criticalCount = computed(
-  () =>
-    rawData.value.filter((i) => i.status !== "Success" || i.packetLoss > 0)
-      .length
-);
+const totalTargets = computed(() => summary.value.total ?? 0);
+const activeTargets = computed(() => summary.value.active ?? 0);
+const healthyCount = computed(() => targetHealth.value.filter((i) => i.status === "Success").length);
+const criticalCount = computed(() => targetHealth.value.filter((i) => i.status !== "Success" || (i.packetLoss ?? 0) > 0).length);
 
 // --- Lifecycle ---
 onMounted(() => {
@@ -362,7 +355,7 @@ onUnmounted(() => clearInterval(timer.value));
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 24px;
 }
 

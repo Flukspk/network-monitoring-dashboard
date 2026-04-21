@@ -2,7 +2,12 @@
   <div class="kuma-layout">
     <aside class="sidebar-monitors">
       <div class="sidebar-header">
-        <button class="btn-add-monitor" @click="openModal">
+        <div class="type-tabs">
+          <button class="tab-btn" :class="{ active: activeTab === 'PING' }" @click="setTab('PING')">PING</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'HTTP' }" @click="setTab('HTTP')">HTTP</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'TRACEROUTE' }" @click="setTab('TRACEROUTE')">TRACEROUTE</button>
+        </div>
+        <button class="btn-add-monitor" @click="openModal" :disabled="isViewer">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
@@ -12,8 +17,8 @@
       
       <div class="monitor-list">
         <div 
-          v-for="m in monitors" 
-          :key="m.target"
+          v-for="m in filteredMonitors" 
+          :key="`${m.target}_${m.type}`"
           class="monitor-item"
           :class="{ active: selectedMonitor && selectedMonitor.target === m.target }"
           @click="selectMonitor(m)"
@@ -25,7 +30,7 @@
           </div>
           <span class="monitor-ping" v-if="m.latency > 0">{{ m.latency }}ms</span>
         </div>
-        <div v-if="monitors.length === 0" class="empty-list">
+        <div v-if="filteredMonitors.length === 0" class="empty-list">
           No monitors added yet.
         </div>
       </div>
@@ -44,7 +49,7 @@
           </p>
         </div>
         <div class="header-actions">
-          <button class="btn-delete" @click="deleteMonitor(selectedMonitor)">
+          <button class="btn-delete" @click="deleteMonitor(selectedMonitor)" :disabled="isViewer">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M3 4h10M6 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1m-7 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
@@ -100,6 +105,32 @@
         </div>
         <div class="canvas-wrapper">
           <canvas ref="chartCanvas" width="800" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="card dist-card" v-show="selectedMonitor.type !== 'TRACEROUTE'">
+        <div class="dist-header">
+          <span class="graph-title">Delay Distribution</span>
+          <div class="probe-stats">
+            <span class="probe-item">p50: {{ probeStats.p50 }}ms</span>
+            <span class="probe-item">p95: {{ probeStats.p95 }}ms</span>
+            <span class="probe-item">p99: {{ probeStats.p99 }}ms</span>
+          </div>
+        </div>
+
+        <div class="dist-grid">
+          <div class="dist-panel">
+            <div class="panel-title">Distribution (ECDF)</div>
+            <div class="canvas-wrapper small">
+              <canvas ref="distCanvas" width="800" height="180"></canvas>
+            </div>
+          </div>
+          <div class="dist-panel">
+            <div class="panel-title">Histogram</div>
+            <div class="canvas-wrapper small">
+              <canvas ref="histCanvas" width="800" height="180"></canvas>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -195,6 +226,22 @@ import axios from "axios";
 const monitors = ref([]); 
 const selectedMonitor = ref(null); 
 const showModal = ref(false);
+const activeTab = ref("PING");
+
+const roleId = computed(() => {
+  try {
+    const raw = localStorage.getItem("user");
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return u?.roleId ?? null;
+  } catch {
+    return null;
+  }
+});
+const isViewer = computed(() => {
+  // roleId: 1=Admin, 2=Operator, 3=Viewer (fallback = Viewer)
+  return roleId.value !== 1 && roleId.value !== 2;
+});
 
 // Form State
 const newTarget = ref("");
@@ -203,6 +250,8 @@ const newThreshold = ref(500); // 🚨 ค่าเริ่มต้น Thresho
 
 let loopInterval = null;
 const chartCanvas = ref(null);
+const distCanvas = ref(null);
+const histCanvas = ref(null);
 
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -234,11 +283,17 @@ onMounted(() => {
     monitors.value = JSON.parse(saved);
     if (monitors.value.length > 0) {
       selectedMonitor.value = monitors.value[0];
+      activeTab.value = selectedMonitor.value.type || "PING";
     }
   }
 
-  runLoop();
-  loopInterval = setInterval(runLoop, 5000);
+  fetchLatestData();
+  if (!isViewer.value) {
+    runLoop();
+    loopInterval = setInterval(runLoop, 5000);
+  } else {
+    loopInterval = setInterval(fetchLatestData, 5000);
+  }
 });
 
 onUnmounted(() => {
@@ -253,14 +308,29 @@ watch(selectedMonitor, () => {
 
 // --- Modal Functions ---
 const openModal = () => {
+  if (isViewer.value) return;
   newTarget.value = "";
-  newType.value = "PING";
+  newType.value = activeTab.value;
   newThreshold.value = 500; // 🚨 รีเซ็ตเป็น 500 ตอนเปิด Modal ใหม่
   showModal.value = true;
 };
 const closeModal = () => { showModal.value = false; };
 
+const setTab = (tab) => {
+  activeTab.value = tab;
+  // If current selection is outside the tab, select the first monitor in this tab
+  if (selectedMonitor.value && selectedMonitor.value.type !== tab) {
+    const first = monitors.value.find(m => m.type === tab);
+    selectedMonitor.value = first || null;
+  }
+};
+
+const filteredMonitors = computed(() => {
+  return monitors.value.filter(m => m.type === activeTab.value);
+});
+
 const addMonitor = () => {
+  if (isViewer.value) return;
   let target = newTarget.value.trim().toLowerCase();
   
   if (!target) return alert("Target cannot be empty!");
@@ -295,14 +365,18 @@ const addMonitor = () => {
 };
 
 const deleteMonitor = (mon) => {
+  if (isViewer.value) return;
   if(!confirm(`Are you sure you want to delete ${mon.target}?`)) return;
   monitors.value = monitors.value.filter(m => !(m.target === mon.target && m.type === mon.type));
-  selectedMonitor.value = monitors.value.length > 0 ? monitors.value[0] : null;
+  const firstInTab = monitors.value.find(m => m.type === activeTab.value);
+  selectedMonitor.value = firstInTab || (monitors.value.length > 0 ? monitors.value[0] : null);
+  if (selectedMonitor.value?.type) activeTab.value = selectedMonitor.value.type;
   saveToLocal();
 };
 
 const selectMonitor = (mon) => {
   selectedMonitor.value = mon;
+  if (mon?.type) activeTab.value = mon.type;
 };
 
 const saveToLocal = () => {
@@ -319,11 +393,33 @@ const runLoop = async () => {
     if (targetsOfType.length > 0) {
       try {
         const endpoint = API_BASE_URL.startsWith("/") ? `${API_BASE_URL}/agent/run-batch` : `${API_BASE_URL}/api/agent/run-batch`;
-        await axios.post(endpoint, {
-          AgentId: t,
-          Targets: targetsOfType,
-          MetricType: t
-        });
+        if (t === "PING" || t === "HTTP") {
+          const groups = {};
+          monitors.value
+            .filter(m => m.type === t)
+            .forEach(m => {
+              const th = m.threshold ?? null;
+              const key = th === null ? "__null__" : String(th);
+              if (!groups[key]) groups[key] = { threshold: th, targets: [] };
+              groups[key].targets.push(m.target);
+            });
+
+          for (const key in groups) {
+            const g = groups[key];
+            await axios.post(endpoint, {
+              AgentId: t,
+              Targets: g.targets,
+              MetricType: t,
+              Threshold: g.threshold
+            });
+          }
+        } else {
+          await axios.post(endpoint, {
+            AgentId: t,
+            Targets: targetsOfType,
+            MetricType: t
+          });
+        }
       } catch (err) {
         console.error(`Error running ${t}:`, err);
       }
@@ -421,6 +517,87 @@ const calculateUptime = (mon) => {
   return Math.round((up / valid.length) * 100);
 };
 
+const percentile = (arr, p) => {
+  if (!arr || arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  const w = idx - lo;
+  return sorted[lo] * (1 - w) + sorted[hi] * w;
+};
+
+const probeStats = computed(() => {
+  if (!selectedMonitor.value || selectedMonitor.value.type === 'TRACEROUTE') return { p50: 0, p95: 0, p99: 0 };
+  const data = (selectedMonitor.value.history || []).map(h => h.latency).filter(v => typeof v === 'number' && v > 0);
+  return {
+    p50: Math.round(percentile(data, 0.5)),
+    p95: Math.round(percentile(data, 0.95)),
+    p99: Math.round(percentile(data, 0.99))
+  };
+});
+
+const drawEcdf = (values, ctx, width, height, color) => {
+  ctx.clearRect(0, 0, width, height);
+  if (!values || values.length === 0) return;
+
+  const data = [...values].sort((a, b) => a - b);
+  const minX = Math.min(...data);
+  const maxX = Math.max(...data);
+  const spanX = Math.max(maxX - minX, 1);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (height / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  data.forEach((v, i) => {
+    const x = ((v - minX) / spanX) * width;
+    const y = height - ((i + 1) / data.length) * height;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+};
+
+const drawHistogram = (values, ctx, width, height, color, bins = 12) => {
+  ctx.clearRect(0, 0, width, height);
+  if (!values || values.length === 0) return;
+
+  const data = values.filter(v => v > 0);
+  const minX = Math.min(...data);
+  const maxX = Math.max(...data);
+  const spanX = Math.max(maxX - minX, 1);
+  const counts = Array.from({ length: bins }, () => 0);
+  data.forEach(v => {
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor(((v - minX) / spanX) * bins)));
+    counts[idx] += 1;
+  });
+  const maxC = Math.max(...counts, 1);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (height / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+  }
+
+  const barW = width / bins;
+  counts.forEach((c, i) => {
+    const h = (c / maxC) * (height - 10);
+    const x = i * barW + 1;
+    const y = height - h;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, Math.max(1, barW - 2), h);
+  });
+};
+
 // --- Graph Drawing ---
 const drawGraph = () => {
   const canvas = chartCanvas.value;
@@ -482,6 +659,16 @@ const drawGraph = () => {
   }
   ctx.fillStyle = gradient; 
   ctx.fill();
+
+  const valid = selectedMonitor.value.history.map(h => h.latency).filter(v => typeof v === 'number' && v > 0);
+  const dist = distCanvas.value;
+  const hist = histCanvas.value;
+  if (dist && hist) {
+    const distCtx = dist.getContext("2d");
+    const histCtx = hist.getContext("2d");
+    drawEcdf(valid, distCtx, dist.width, dist.height, "rgba(88, 166, 255, 0.95)");
+    drawHistogram(valid, histCtx, hist.width, hist.height, "rgba(80, 184, 60, 0.85)");
+  }
 };
 </script>
 
@@ -544,11 +731,51 @@ const drawGraph = () => {
 .text-warning { color: #d29922 !important; }
 .text-gray { color: #8b949e !important; }
 
-.graph-card, .terminal-card { padding: 20px; }
+.graph-card, .terminal-card, .dist-card { padding: 20px; }
 .graph-header { margin-bottom: 20px; }
 .graph-title { font-size: 14px; color: #8b949e; font-weight: 500; }
 .canvas-wrapper { width: 100%; height: 200px; }
+.canvas-wrapper.small { height: 180px; }
 canvas { width: 100% !important; height: 100% !important; }
+
+.type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tab-btn {
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #8b949e;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  transition: all 0.15s ease;
+}
+.tab-btn:hover {
+  border-color: #8b949e;
+  color: #c9d1d9;
+}
+.tab-btn.active {
+  background: rgba(80, 184, 60, 0.15);
+  border-color: rgba(80, 184, 60, 0.35);
+  color: #50b83c;
+}
+
+.dist-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.probe-stats { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.probe-item { font-family: monospace; font-size: 12px; color: #c9d1d9; background: rgba(255,255,255,0.04); border: 1px solid #30363d; padding: 4px 8px; border-radius: 999px; }
+.dist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dist-panel { background-color: #0b0e14; border: 1px solid #30363d; border-radius: 10px; padding: 12px; }
+.panel-title { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
+
+@media (max-width: 1024px) {
+  .dist-grid { grid-template-columns: 1fr; }
+}
 
 .terminal-box { background-color: #000000; border-radius: 8px; padding: 16px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; color: #e6edf3; border: 1px solid #30363d; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); min-height: 200px; }
 .terminal-header { color: #8b949e; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed #30363d; }

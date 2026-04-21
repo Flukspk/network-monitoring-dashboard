@@ -8,7 +8,7 @@
     <nav class="nav">
       <p class="nav-label">Monitor</p>
       <router-link
-        v-for="item in navItems"
+        v-for="item in visibleNavItems"
         :key="item.path"
         :to="item.path"
         class="nav-item"
@@ -37,6 +37,7 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router"; // เพิ่ม useRoute เพื่อเช็ค active class แม่นยำขึ้น
 
 const router = useRouter();
@@ -51,6 +52,25 @@ const navItems = [
   { path: "/users", label: "Users", icon: "👤" },
   { path: "/settings", label: "Settings", icon: "⚙️" }, // ✅ เพิ่มเมนู Settings ตรงนี้
 ];
+
+const roleId = computed(() => {
+  try {
+    const raw = localStorage.getItem("user");
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return u?.roleId ?? null;
+  } catch {
+    return null;
+  }
+});
+
+const visibleNavItems = computed(() => {
+  const isAdmin = roleId.value === 1;
+  return navItems.filter((item) => {
+    if (item.path === "/users" || item.path === "/settings") return isAdmin;
+    return true;
+  });
+});
 
 function logout() {
   localStorage.removeItem("user");
