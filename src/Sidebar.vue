@@ -23,12 +23,12 @@
     <div class="sidebar-footer">
       <div class="status-card">
         <div>
-          <p class="status-title">Edge agent</p>
-          <p class="text-muted">Synced 2 minutes ago</p>
+          <p class="status-title">{{ latestTarget || 'No data' }}</p>
+          <p class="text-muted">{{ latestLabel }}</p>
         </div>
         <span class="pill soft-pill">
           <span class="status-dot status-success"></span>
-          Healthy
+          {{ latestType || 'Healthy' }}
         </span>
       </div>
       <button class="logout-btn" @click="logout">Log out</button>
@@ -37,11 +37,44 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
-import { useRouter, useRoute } from "vue-router"; // เพิ่ม useRoute เพื่อเช็ค active class แม่นยำขึ้น
+import { computed, ref, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
 
 const router = useRouter();
-const route = useRoute(); // ใช้สำหรับเช็ค active link
+const route = useRoute();
+
+const latestTarget = ref('');
+const latestType = ref('');
+const latestLabel = ref('Loading...');
+
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+
+async function fetchLatest() {
+  try {
+    const res = await fetch('/api/metrics/summary');
+    const json = await res.json();
+    const data = json?.data ?? json;
+    if (!data?.length) return;
+    const latest = data.reduce((a, b) =>
+      new Date(a.lastProbe) > new Date(b.lastProbe) ? a : b
+    );
+    latestTarget.value = latest.target;
+    latestType.value = latest.metricType;
+    latestLabel.value = `Synced ${timeAgo(latest.lastProbe)}`;
+  } catch {
+    latestLabel.value = 'Unavailable';
+  }
+}
+
+onMounted(() => {
+  fetchLatest();
+  setInterval(fetchLatest, 15000);
+});
 
 // ✅ เพิ่ม Settings เข้าไปในรายการ
 const navItems = [
@@ -50,7 +83,8 @@ const navItems = [
   { path: "/event", label: "Events", icon: "📅", badge: "2" },
   { path: "/alert", label: "Alerts", icon: "🚨", badge: "4" },
   { path: "/users", label: "Users", icon: "👤" },
-  { path: "/settings", label: "Settings", icon: "⚙️" }, // ✅ เพิ่มเมนู Settings ตรงนี้
+  { path: "/settings", label: "Settings", icon: "⚙️" },
+  { path: "/profile", label: "My Profile", icon: "👤" },
 ];
 
 const roleId = computed(() => {
@@ -68,6 +102,7 @@ const visibleNavItems = computed(() => {
   const isAdmin = roleId.value === 1;
   return navItems.filter((item) => {
     if (item.path === "/users" || item.path === "/settings") return isAdmin;
+    if (item.path === "/profile") return true;
     return true;
   });
 });

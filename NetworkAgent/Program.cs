@@ -8,6 +8,8 @@ using System.Net;
 using System.Text.Json; 
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Extensions.Http", LogLevel.Warning);
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHttpClient();
 var host = builder.Build();
@@ -38,9 +40,10 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly HttpClient _httpClient;
     
-    private const string BackendUrl = "http://backend:5000/api/metrics"; 
-    // ✅ URL ใหม่: เรียกไปที่ MetricsController เดิม แต่ขอ list targets
-    private const string TargetApiUrl = "http://backend:5000/api/metrics/targets"; 
+    private static readonly string BackendUrl =
+        $"{Environment.GetEnvironmentVariable("BACKEND_URL") ?? "http://backend:5000"}/api/metrics";
+    private static readonly string TargetApiUrl =
+        $"{Environment.GetEnvironmentVariable("BACKEND_URL") ?? "http://backend:5000"}/api/metrics/targets";
 
     private readonly string AgentName = Environment.GetEnvironmentVariable("AGENT_NAME") ?? "Unknown-Agent";
     private readonly string AgentMode = Environment.GetEnvironmentVariable("AGENT_MODE") ?? "ALL"; 

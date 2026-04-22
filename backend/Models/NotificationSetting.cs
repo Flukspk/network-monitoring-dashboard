@@ -10,7 +10,8 @@ namespace Backend.Models
         public int? UserId { get; set; } // เผื่ออนาคตทำระบบ Login
         
         public string? TelegramToken { get; set; }
-        public string LineToken { get; set; } // ในรูปคือ LineOAToken
+        public string? TelegramChatId { get; set; }
+        public string LineToken { get; set; }
         
         public bool IsEnable { get; set; } = true; // แทน IsRead (ใช้เปิด/ปิดแจ้งเตือนดีกว่า)
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

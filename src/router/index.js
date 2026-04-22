@@ -7,7 +7,8 @@ import Events from "../pages/Events.vue";
 import Alerts from "../pages/Alerts.vue";
 import Users from "../pages/Users.vue"; 
 import SettingsPage from "../pages/SettingsPage.vue"; 
-import AcceptInvite from "../pages/AcceptInvite.vue"; // 🔴 1. Import ไฟล์ AcceptInvite.vue เข้ามา
+import AcceptInvite from "../pages/AcceptInvite.vue";
+import ProfilePage from "../pages/ProfilePage.vue";
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -29,7 +30,8 @@ const routes = [
       { path: "event", name: "Events", component: Events, meta: { requiresAuth: true } },
       { path: "alert", name: "Alerts", component: Alerts, meta: { requiresAuth: true } },
       { path: "users", name: "Users", component: Users, meta: { requiresAuth: true, roles: [1] } }, 
-      { path: "settings", name: "Settings", component: SettingsPage, meta: { requiresAuth: true, roles: [1] } }, 
+      { path: "settings", name: "Settings", component: SettingsPage, meta: { requiresAuth: true, roles: [1] } },
+      { path: "profile", name: "Profile", component: ProfilePage, meta: { requiresAuth: true } },
     ],
   },
 ];

@@ -190,9 +190,7 @@ namespace Backend.Controllers
             }
 
             if (isAlertNeeded)
-            {
-                _ = SendLineNotify(alertMsg, setting);
-            }
+                _ = SendAlertsToAllUsers(alertMsg, setting);
 
             var metric = new NetworkMetric
             {
@@ -350,9 +348,7 @@ namespace Backend.Controllers
                 }
 
                 if (isAlertNeeded)
-                {
-                    _ = SendLineNotify(alertMsg, setting);
-                }
+                    _ = SendAlertsToAllUsers(alertMsg, setting);
 
                 var metric = new NetworkMetric
                 {
@@ -388,7 +384,56 @@ namespace Backend.Controllers
         }
 
         // ==========================================
-        // 🔔 5. ฟังก์ชันส่ง LINE Push Message (NAPMA BOT)
+        // 🔔 5. ส่งหาทุก User ที่ตั้งค่าไว้
+        // ==========================================
+        private Task SendAlertsToAllUsers(string message, NotificationSetting? globalSetting)
+        {
+            if (globalSetting == null || !globalSetting.IsEnable) return Task.CompletedTask;
+            var users = _context.Users.ToList();
+            var tasks = new List<Task>();
+            foreach (var user in users)
+            {
+                if (!string.IsNullOrEmpty(user.LineToken))
+                {
+                    var lineSetting = new NotificationSetting { IsEnable = true, LineToken = user.LineToken };
+                    tasks.Add(SendLineNotify(message, lineSetting));
+                }
+                if (!string.IsNullOrEmpty(user.TelegramChatId) && !string.IsNullOrEmpty(globalSetting.TelegramToken))
+                {
+                    var tgSetting = new NotificationSetting { IsEnable = true, TelegramToken = globalSetting.TelegramToken, TelegramChatId = user.TelegramChatId };
+                    tasks.Add(SendTelegramNotify(message, tgSetting));
+                }
+            }
+            return Task.WhenAll(tasks);
+        }
+
+        // ==========================================
+        // 🔔 6. ส่ง Telegram
+        // ==========================================
+        private async Task SendTelegramNotify(string message, NotificationSetting setting)
+        {
+            try
+            {
+                if (setting == null || !setting.IsEnable
+                    || string.IsNullOrEmpty(setting.TelegramToken)
+                    || string.IsNullOrEmpty(setting.TelegramChatId))
+                    return;
+
+                using var client = new HttpClient();
+                var url = $"https://api.telegram.org/bot{setting.TelegramToken}/sendMessage";
+                var payload = new { chat_id = setting.TelegramChatId, text = message, parse_mode = "HTML" };
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                await client.PostAsync(url, content);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Telegram Error] {ex.Message}");
+            }
+        }
+
+        // ==========================================
+        // 🔔 6. ฟังก์ชันส่ง LINE Push Message (NAPMA BOT)
         // ==========================================
         private async Task SendLineNotify(string message, NotificationSetting setting)
         {

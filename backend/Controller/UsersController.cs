@@ -133,15 +133,30 @@ namespace Backend.Controllers
             if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 6)
                 return BadRequest(new { message = "Password must be at least 6 characters long." });
 
-            // อัปเดตรหัสผ่านใหม่ทับ Token เดิม (สถานะจะกลายเป็น Active อัตโนมัติ)
-            user.Password = request.NewPassword; 
+            user.Password = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Account activated! You can now log in." });
         }
 
         // ==========================================
-        // 4️⃣ DELETE: api/users/{id} (ลบผู้ใช้งาน)
+        // 4️⃣ PUT: api/users/{id}/notifications (อัปเดต notification ของตัวเอง)
+        // ==========================================
+        [HttpPut("{id}/notifications")]
+        public async Task<IActionResult> UpdateNotifications(int id, [FromBody] UpdateNotificationsRequest request)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound(new { message = "User not found." });
+
+            user.TelegramChatId = request.TelegramChatId;
+            user.LineToken = request.LineToken;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Notification settings saved." });
+        }
+
+        // ==========================================
+        // 5️⃣ DELETE: api/users/{id} (ลบผู้ใช้งาน)
         // ==========================================
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id)
@@ -171,14 +186,11 @@ namespace Backend.Controllers
             }
 
             // ค้นหา User จาก Email และ รหัสผ่านที่ตรงกัน
-            var user = await _context.Users.FirstOrDefaultAsync(u => 
-                u.Username == request.Username.ToLower().Trim() && 
-                u.Password == request.Password);
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Username == request.Username.ToLower().Trim());
 
-            if (user == null)
-            {
+            if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
                 return Unauthorized(new { message = "Invalid email or password." });
-            }
 
             // ดักไว้เผื่อพนักงานใช้รหัส INVITE_ ล็อกอินโดยที่ยังไม่กดยืนยันในอีเมล
             if (user.Password.StartsWith("INVITE_"))
@@ -216,5 +228,11 @@ namespace Backend.Controllers
     {
         public string Username { get; set; }
         public string Password { get; set; }
+    }
+
+    public class UpdateNotificationsRequest
+    {
+        public string? TelegramChatId { get; set; }
+        public string? LineToken { get; set; }
     }
 }

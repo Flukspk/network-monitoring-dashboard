@@ -542,33 +542,88 @@ const drawEcdf = (values, ctx, width, height, color) => {
   ctx.clearRect(0, 0, width, height);
   if (!values || values.length === 0) return;
 
+  const pad = { top: 12, right: 12, bottom: 36, left: 44 };
+  const W = width - pad.left - pad.right;
+  const H = height - pad.top - pad.bottom;
+
   const data = [...values].sort((a, b) => a - b);
   const minX = Math.min(...data);
   const maxX = Math.max(...data);
   const spanX = Math.max(maxX - minX, 1);
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = (height / 4) * i;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+  ctx.font = "11px sans-serif";
+  ctx.fillStyle = "rgba(139,148,158,0.9)";
+  ctx.textAlign = "right";
+  const yLabels = [0, 25, 50, 75, 100];
+  yLabels.forEach(p => {
+    const y = pad.top + H - (p / 100) * H;
+    ctx.fillText(`${p}%`, pad.left - 6, y + 4);
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + W, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  const xTicks = 5;
+  ctx.textAlign = "center";
+  for (let i = 0; i <= xTicks; i++) {
+    const val = minX + (i / xTicks) * spanX;
+    const x = pad.left + (i / xTicks) * W;
+    ctx.fillStyle = "rgba(139,148,158,0.9)";
+    ctx.fillText(`${Math.round(val)}ms`, x, height - 6);
   }
 
+  // area fill
+  const areaGrad = ctx.createLinearGradient(0, pad.top, 0, pad.top + H);
+  areaGrad.addColorStop(0, "rgba(88,166,255,0.18)");
+  areaGrad.addColorStop(1, "rgba(88,166,255,0.01)");
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = pad.left + ((v - minX) / spanX) * W;
+    const y = pad.top + H - ((i + 1) / data.length) * H;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(pad.left + W, pad.top + H);
+  ctx.lineTo(pad.left, pad.top + H);
+  ctx.closePath();
+  ctx.fillStyle = areaGrad;
+  ctx.fill();
+
+  // line
   ctx.beginPath();
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
   data.forEach((v, i) => {
-    const x = ((v - minX) / spanX) * width;
-    const y = height - ((i + 1) / data.length) * height;
+    const x = pad.left + ((v - minX) / spanX) * W;
+    const y = pad.top + H - ((i + 1) / data.length) * H;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
+
+  // axis lines
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + H);
+  ctx.lineTo(pad.left + W, pad.top + H);
+  ctx.stroke();
 };
 
-const drawHistogram = (values, ctx, width, height, color, bins = 12) => {
+const drawHistogram = (values, ctx, width, height, bins = 12) => {
   ctx.clearRect(0, 0, width, height);
   if (!values || values.length === 0) return;
+
+  const pad = { top: 12, right: 12, bottom: 36, left: 44 };
+  const W = width - pad.left - pad.right;
+  const H = height - pad.top - pad.bottom;
 
   const data = values.filter(v => v > 0);
   const minX = Math.min(...data);
@@ -581,21 +636,64 @@ const drawHistogram = (values, ctx, width, height, color, bins = 12) => {
   });
   const maxC = Math.max(...counts, 1);
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = (height / 4) * i;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-  }
-
-  const barW = width / bins;
-  counts.forEach((c, i) => {
-    const h = (c / maxC) * (height - 10);
-    const x = i * barW + 1;
-    const y = height - h;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, Math.max(1, barW - 2), h);
+  ctx.font = "11px sans-serif";
+  ctx.fillStyle = "rgba(139,148,158,0.9)";
+  ctx.textAlign = "right";
+  [0, 25, 50, 75, 100].forEach(p => {
+    const cnt = Math.round((p / 100) * maxC);
+    const y = pad.top + H - (p / 100) * H;
+    ctx.fillText(cnt, pad.left - 6, y + 4);
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + W, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
   });
+
+  const barW = W / bins;
+  const gap = Math.max(2, barW * 0.12);
+  const radius = 3;
+  counts.forEach((c, i) => {
+    if (c === 0) return;
+    const bh = (c / maxC) * H;
+    const x = pad.left + i * barW + gap;
+    const y = pad.top + H - bh;
+    const bw = Math.max(1, barW - gap * 2);
+
+    const grad = ctx.createLinearGradient(0, y, 0, y + bh);
+    grad.addColorStop(0, "rgba(80,184,60,0.95)");
+    grad.addColorStop(1, "rgba(80,184,60,0.45)");
+    ctx.fillStyle = grad;
+
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + bw - radius, y);
+    ctx.arcTo(x + bw, y, x + bw, y + radius, radius);
+    ctx.lineTo(x + bw, y + bh);
+    ctx.lineTo(x, y + bh);
+    ctx.arcTo(x, y, x + radius, y, radius);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(139,148,158,0.9)";
+  [0, Math.floor(bins / 2), bins].forEach(i => {
+    const val = minX + (i / bins) * spanX;
+    const x = pad.left + (i / bins) * W;
+    ctx.fillText(`${Math.round(val)}ms`, x, height - 6);
+  });
+
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + H);
+  ctx.lineTo(pad.left + W, pad.top + H);
+  ctx.stroke();
 };
 
 // --- Graph Drawing ---
@@ -667,7 +765,7 @@ const drawGraph = () => {
     const distCtx = dist.getContext("2d");
     const histCtx = hist.getContext("2d");
     drawEcdf(valid, distCtx, dist.width, dist.height, "rgba(88, 166, 255, 0.95)");
-    drawHistogram(valid, histCtx, hist.width, hist.height, "rgba(80, 184, 60, 0.85)");
+    drawHistogram(valid, histCtx, hist.width, hist.height);
   }
 };
 </script>

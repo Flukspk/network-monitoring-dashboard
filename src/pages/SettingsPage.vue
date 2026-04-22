@@ -68,6 +68,32 @@
               </div>
             </div>
 
+            <div class="form-group">
+              <label for="telegramToken">
+                <span class="label-text">Telegram Bot Token</span>
+              </label>
+              <div class="input-wrapper">
+                <span class="input-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+                </span>
+                <input id="telegramToken" v-model="settings.telegramToken" type="text"
+                  class="form-input" placeholder="e.g. 8688219267:AAF..." autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="telegramChatId">
+                <span class="label-text">Telegram Chat ID</span>
+              </label>
+              <div class="input-wrapper">
+                <span class="input-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                </span>
+                <input id="telegramChatId" v-model="settings.telegramChatId" type="text"
+                  class="form-input" placeholder="e.g. 1753235625" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+
             <div class="form-group-checkbox">
               <label class="toggle">
                 <input type="checkbox" id="enableAlerts" v-model="settings.isEnable" />
@@ -130,7 +156,8 @@
   
   const settings = ref({
   lineToken: '',
-  telegramToken: 'disabled', // 👈 แก้ตรงนี้! ใส่ข้อความอะไรก็ได้ที่ไม่ใช่ค่าว่าง
+  telegramToken: '',
+  telegramChatId: '',
   isEnable: true
 });
   

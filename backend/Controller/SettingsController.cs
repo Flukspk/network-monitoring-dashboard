@@ -44,6 +44,7 @@ namespace Backend.Controllers
                 setting = new NotificationSetting
                 {
                     TelegramToken = request.TelegramToken,
+                    TelegramChatId = request.TelegramChatId,
                     LineToken = request.LineToken,
                     IsEnable = request.IsEnable,
                     UpdatedAt = DateTime.UtcNow
@@ -52,8 +53,8 @@ namespace Backend.Controllers
             }
             else
             {
-                // ถ้ามีแล้วให้อัปเดต
                 setting.TelegramToken = request.TelegramToken;
+                setting.TelegramChatId = request.TelegramChatId;
                 setting.LineToken = request.LineToken;
                 setting.IsEnable = request.IsEnable;
                 setting.UpdatedAt = DateTime.UtcNow;
