@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://network-monitoring-dashboard-production-0428.up.railway.app/api/:path*"
+      "destination": "https://d488-2403-6200-88a0-b87a-44af-828d-ddb6-55fe.ngrok-free.app/api/:path*"
     },
     {
       "source": "/(.*)",
