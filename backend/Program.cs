@@ -47,17 +47,24 @@ using (var scope = app.Services.CreateScope())
             db.Database.Migrate();
 
             // สร้าง User เริ่มต้นถ้ายังไม่มี
-            if (!db.Users.Any(u => u.Username == "Intouch@gmail.com"))
+            var defaultUser = db.Users.FirstOrDefault(u => u.Username == "intouch@gmail.com");
+            if (defaultUser == null)
             {
                 db.Users.Add(new User
                 {
-                    Username = "Intouch@gmail.com",
-                    Password = "123456",
+                    Username = "intouch@gmail.com",
+                    Password = BCrypt.Net.BCrypt.HashPassword("123456"),
                     RoleId = 1,
                     CreatedAt = DateTime.UtcNow
                 });
                 db.SaveChanges();
                 logger.LogInformation("Default user created.");
+            }
+            else if (!defaultUser.Password.StartsWith("$2"))
+            {
+                defaultUser.Password = BCrypt.Net.BCrypt.HashPassword(defaultUser.Password);
+                db.SaveChanges();
+                logger.LogInformation("Default user password migrated to BCrypt.");
             }
             
             logger.LogInformation("Database migration completed successfully.");
