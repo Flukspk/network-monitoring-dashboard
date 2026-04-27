@@ -211,7 +211,11 @@ namespace Backend.Controllers
             }
 
             Console.WriteLine($"[BatchTest] Processing {request.Targets.Count} targets...");
-            
+
+            // Register targets for continuous agent monitoring
+            foreach (var t in request.Targets)
+                MetricsController.RegisterTarget(t, metricType);
+
             var setting = _context.NotificationSettings.FirstOrDefault();
             var results = new List<object>();
 

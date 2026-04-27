@@ -20,6 +20,11 @@ namespace Backend.Controllers
         // จำรายชื่อเป้าหมายที่กำลังทำงาน (อยู่ใน RAM)
         private static HashSet<string> _activeTargets = new HashSet<string>();
 
+        public static void RegisterTarget(string target, string metricType)
+        {
+            _activeTargets.Add($"{target}|{metricType}");
+        }
+
         public MetricsController(BackendDbContext context, ILogger<MetricsController> logger)
         {
             _context = context;
@@ -53,11 +58,24 @@ namespace Backend.Controllers
         [HttpGet("targets")]
         public IActionResult GetActiveTargets()
         {
+            // If in-memory is empty (e.g. after restart), seed from DB recent data
+            if (_activeTargets.Count == 0)
+            {
+                var cutoff = DateTime.UtcNow.AddHours(-24);
+                var dbTargets = _context.NetworkMetrics
+                    .Where(m => m.Timestamp >= cutoff)
+                    .Select(m => new { m.Target, m.MetricType })
+                    .Distinct()
+                    .ToList();
+                foreach (var t in dbTargets)
+                    _activeTargets.Add($"{t.Target}|{t.MetricType}");
+            }
+
             var targets = _activeTargets.Select(t => {
                 var parts = t.Split('|');
-                return new { 
-                    Target = parts[0], 
-                    MetricType = parts.Length > 1 ? parts[1] : "PING" 
+                return new {
+                    Target = parts[0],
+                    MetricType = parts.Length > 1 ? parts[1] : "PING"
                 };
             }).ToList();
 
