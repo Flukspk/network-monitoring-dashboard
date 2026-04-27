@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.Hosting; // จำเป็นสำหรับ UseU
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 🔥 FIX 1: บังคับให้ Kestrel ฟังที่ IP 0.0.0.0 พอร์ต 5000 (สำคัญมากสำหรับ Docker)
-builder.WebHost.UseUrls("http://0.0.0.0:5000");
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // 1. Add Controllers
 builder.Services.AddControllers();
@@ -91,7 +91,8 @@ app.MapGet("/", () => "Backend is running!");
 // Login endpoint
 app.MapPost("/api/auth/login", async (BackendDbContext db, UserLoginDto login) =>
 {
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == login.Username && u.Password == login.Password);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == login.Username);
+    if (user != null && !BCrypt.Net.BCrypt.Verify(login.Password, user.Password)) user = null;
     if (user == null)
     {
         return Results.Unauthorized();
