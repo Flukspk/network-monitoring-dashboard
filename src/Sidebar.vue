@@ -16,7 +16,7 @@
       >
         <span class="nav-icon">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
-        <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+        <span v-if="item.badgeRef?.value" class="nav-badge">{{ item.badgeRef.value }}</span>
       </router-link>
     </nav>
 
@@ -46,6 +46,9 @@ const route = useRoute();
 const latestTarget = ref('');
 const latestType = ref('');
 const latestLabel = ref('Loading...');
+const targetCount = ref(null);
+const downCount = ref(null);
+const recentEventCount = ref(null);
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
@@ -60,6 +63,8 @@ async function fetchLatest() {
     const json = await res.json();
     const data = json?.data ?? json;
     if (!data?.length) return;
+    targetCount.value = data.length;
+    downCount.value = data.filter(d => d.status === 'Failed').length || null;
     const latest = data.reduce((a, b) =>
       new Date(a.lastProbe) > new Date(b.lastProbe) ? a : b
     );
@@ -71,17 +76,31 @@ async function fetchLatest() {
   }
 }
 
+async function fetchRecentEvents() {
+  try {
+    const res = await fetch('/api/metrics/filter');
+    const json = await res.json();
+    const data = json?.data ?? json;
+    if (!Array.isArray(data)) return;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const count = data.filter(e =>
+      e.status === 'Failed' && new Date(e.timestamp) > cutoff
+    ).length;
+    recentEventCount.value = count || null;
+  } catch { /* silent */ }
+}
+
 onMounted(() => {
   fetchLatest();
+  fetchRecentEvents();
   setInterval(fetchLatest, 15000);
+  setInterval(fetchRecentEvents, 15000);
 });
 
-// ✅ เพิ่ม Settings เข้าไปในรายการ
 const navItems = [
-  { path: "/dashboard", label: "Dashboard", icon: "📊" },
-  { path: "/test", label: "Testing", icon: "🧪", badge: "6" },
-  { path: "/event", label: "Events", icon: "📅", badge: "2" },
-  { path: "/alert", label: "Alerts", icon: "🚨", badge: "4" },
+  { path: "/dashboard", label: "Dashboard", icon: "📊", badgeRef: downCount },
+  { path: "/test", label: "Testing", icon: "🧪", badgeRef: targetCount },
+  { path: "/event", label: "Events", icon: "📅", badgeRef: recentEventCount },
   { path: "/users", label: "Users", icon: "👤" },
   { path: "/settings", label: "Settings", icon: "⚙️" },
   { path: "/profile", label: "My Profile", icon: "👤" },

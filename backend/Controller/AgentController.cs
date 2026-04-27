@@ -366,20 +366,22 @@ namespace Backend.Controllers
         private Task SendAlertsToAllUsers(string message, NotificationSetting? globalSetting)
         {
             if (globalSetting == null || !globalSetting.IsEnable) return Task.CompletedTask;
-            var users = _context.Users.ToList();
             var tasks = new List<Task>();
+
+            // ส่งผ่าน global settings (จากหน้า Settings)
+            if (!string.IsNullOrEmpty(globalSetting.LineToken))
+                tasks.Add(SendLineNotify(message, globalSetting));
+            if (!string.IsNullOrEmpty(globalSetting.TelegramToken) && !string.IsNullOrEmpty(globalSetting.TelegramChatId))
+                tasks.Add(SendTelegramNotify(message, globalSetting));
+
+            // ส่งหา user ที่ตั้งค่าส่วนตัวไว้ในหน้า Profile
+            var users = _context.Users.ToList();
             foreach (var user in users)
             {
-                if (!string.IsNullOrEmpty(user.LineToken))
-                {
-                    var lineSetting = new NotificationSetting { IsEnable = true, LineToken = user.LineToken };
-                    tasks.Add(SendLineNotify(message, lineSetting));
-                }
-                if (!string.IsNullOrEmpty(user.TelegramChatId) && !string.IsNullOrEmpty(globalSetting.TelegramToken))
-                {
-                    var tgSetting = new NotificationSetting { IsEnable = true, TelegramToken = globalSetting.TelegramToken, TelegramChatId = user.TelegramChatId };
-                    tasks.Add(SendTelegramNotify(message, tgSetting));
-                }
+                if (!string.IsNullOrEmpty(user.LineToken) && user.LineToken != globalSetting.LineToken)
+                    tasks.Add(SendLineNotify(message, new NotificationSetting { IsEnable = true, LineToken = user.LineToken }));
+                if (!string.IsNullOrEmpty(user.TelegramChatId) && user.TelegramChatId != globalSetting.TelegramChatId && !string.IsNullOrEmpty(globalSetting.TelegramToken))
+                    tasks.Add(SendTelegramNotify(message, new NotificationSetting { IsEnable = true, TelegramToken = globalSetting.TelegramToken, TelegramChatId = user.TelegramChatId }));
             }
             return Task.WhenAll(tasks);
         }

@@ -78,9 +78,34 @@
         </div>
       </div>
 
-      <div class="stats-grid">
+      <!-- PING stats -->
+      <div class="stats-grid" v-if="selectedMonitor.type === 'PING'">
         <div class="stat-box">
-          <p class="stat-label">Response<br>(Current)</p>
+          <p class="stat-label">Latency<br>(Current)</p>
+          <p class="stat-value" :class="{'text-red': selectedMonitor.threshold && selectedMonitor.latency > selectedMonitor.threshold}">
+            {{ selectedMonitor.latency }} <span class="unit">ms</span>
+          </p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Avg. Latency<br>(All time)</p>
+          <p class="stat-value">{{ calculateAvgLatency(selectedMonitor) }} <span class="unit">ms</span></p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Packet Loss<br>(Recorded)</p>
+          <p class="stat-value" :class="{'text-red': calculatePacketLoss(selectedMonitor) > 0}">
+            {{ calculatePacketLoss(selectedMonitor) }} <span class="unit">%</span>
+          </p>
+        </div>
+        <div class="stat-box">
+          <p class="stat-label">Uptime<br>(Recorded)</p>
+          <p class="stat-value">{{ calculateUptime(selectedMonitor) }} <span class="unit">%</span></p>
+        </div>
+      </div>
+
+      <!-- HTTP stats -->
+      <div class="stats-grid" v-if="selectedMonitor.type === 'HTTP'">
+        <div class="stat-box">
+          <p class="stat-label">Response Time<br>(Current)</p>
           <p class="stat-value" :class="{'text-red': selectedMonitor.threshold && selectedMonitor.latency > selectedMonitor.threshold}">
             {{ selectedMonitor.latency }} <span class="unit">ms</span>
           </p>
@@ -507,6 +532,14 @@ const calculateAvgLatency = (mon) => {
   if (valid.length === 0) return 0;
   const sum = valid.reduce((acc, curr) => acc + curr.latency, 0);
   return Math.round(sum / valid.length);
+};
+
+const calculatePacketLoss = (mon) => {
+  if (!mon.history || mon.history.length === 0) return 0;
+  const valid = mon.history.filter(h => h.status !== 'Pending');
+  if (valid.length === 0) return 0;
+  const lost = valid.filter(h => h.status !== 'Success').length;
+  return Math.round((lost / valid.length) * 100);
 };
 
 const calculateUptime = (mon) => {
