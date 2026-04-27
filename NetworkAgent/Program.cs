@@ -152,35 +152,41 @@ public class Worker : BackgroundService
         catch (Exception) { metric.Value = 0; metric.Status = "Failed"; }
     }
 
+    private static readonly string TraceServiceUrl =
+        Environment.GetEnvironmentVariable("TRACE_SERVICE_URL") ?? "http://host.docker.internal:5051/trace";
+
     private async Task RunTraceroute(NetworkMetric metric)
     {
         _logger.LogInformation($"[TRACE] Starting trace to {metric.Target}...");
         var sw = Stopwatch.StartNew();
         var hops = new List<object>();
-        using var ping = new Ping();
-        int maxHops = 30;
-        try 
+        try
         {
-            for (int ttl = 1; ttl <= maxHops; ttl++)
-            {
-                var options = new PingOptions(ttl, true);
-                var buffer = new byte[32]; 
-                var timeout = 1000;
-                try 
-                {
-                    var reply = await ping.SendPingAsync(metric.Target, timeout, buffer, options);
-                    hops.Add(new { hop = ttl, ip = reply.Address?.ToString() ?? "*", status = reply.Status.ToString(), time = reply.RoundtripTime });
-                    if (reply.Status == IPStatus.Success) { metric.Status = "Success"; break; }
-                }
-                catch { hops.Add(new { hop = ttl, ip = "*", status = "TimedOut" }); }
-            }
-            if(metric.Status != "Success") metric.Status = "Success"; 
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(95) };
+            var payload = new StringContent(
+                JsonSerializer.Serialize(new { target = metric.Target }),
+                System.Text.Encoding.UTF8, "application/json");
+            var response = await client.PostAsync(TraceServiceUrl, payload);
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            foreach (var h in doc.RootElement.GetProperty("hops").EnumerateArray())
+                hops.Add(new {
+                    hop    = h.GetProperty("hop").GetInt32(),
+                    ip     = h.GetProperty("ip").GetString(),
+                    status = h.GetProperty("status").GetString(),
+                    time   = h.GetProperty("time").GetInt64()
+                });
+            metric.Status = "Success";
         }
-        catch { metric.Status = "Failed"; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"[TRACE] Error: {ex.Message}");
+            metric.Status = "Failed";
+        }
         sw.Stop();
         metric.Value = sw.ElapsedMilliseconds;
         metric.ExtraData = JsonSerializer.Serialize(new { AgentName = AgentName, TotalHops = hops.Count, Hops = hops });
-        _logger.LogInformation($"[TRACE] Finished {metric.Target}");
+        _logger.LogInformation($"[TRACE] Finished {metric.Target} ({hops.Count} hops)");
     }
 
     private async Task SendData(NetworkMetric metric)

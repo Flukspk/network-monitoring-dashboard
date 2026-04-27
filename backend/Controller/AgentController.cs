@@ -95,45 +95,9 @@ namespace Backend.Controllers
                 }
                 else if (metricType == "TRACEROUTE")
                 {
-                    using var ping = new Ping();
-                    var hops = new List<object>();
-                    int maxHops = 30;
-                    string destIp = request.Target;
-
-                    try
-                    {
-                        var ips = await System.Net.Dns.GetHostAddressesAsync(request.Target);
-                        destIp = ips.FirstOrDefault()?.ToString() ?? request.Target;
-                    }
-                    catch { }
-
-                    for (int ttl = 1; ttl <= maxHops; ttl++)
-                    {
-                        var options = new PingOptions(ttl, true);
-                        var buffer = new byte[32];
-                        try
-                        {
-                            var reply = await ping.SendPingAsync(destIp, 1000, buffer, options);
-                            hops.Add(new
-                            {
-                                hop = ttl,
-                                ip = reply.Address?.ToString() ?? "*",
-                                status = reply.Status.ToString(),
-                                time = reply.RoundtripTime
-                            });
-
-                            if (reply.Status == IPStatus.Success)
-                            {
-                                status = "Success";
-                                break;
-                            }
-                        }
-                        catch
-                        {
-                            hops.Add(new { hop = ttl, ip = "*", status = "TimedOut", time = 0 });
-                        }
-                    }
+                    var hops = await RunTracerouteCommand(request.Target);
                     sw.Stop();
+                    status = hops.Count > 0 ? "Success" : "Investigate";
                     value = sw.ElapsedMilliseconds;
                     message = $"Traceroute finished ({hops.Count} hops)";
                     extraDetail = new { Hops = hops };
@@ -276,31 +240,9 @@ namespace Backend.Controllers
                     }
                     else if (metricType == "TRACEROUTE")
                     {
-                        using var ping = new Ping();
-                        var hops = new List<object>();
-                        int maxHops = 30;
-                        string destIp = target;
-
-                        try {
-                            var ips = await System.Net.Dns.GetHostAddressesAsync(target);
-                            destIp = ips.FirstOrDefault()?.ToString() ?? target;
-                        } catch { }
-
-                        for (int ttl = 1; ttl <= maxHops; ttl++)
-                        {
-                            var options = new PingOptions(ttl, true);
-                            var buffer = new byte[32];
-                            try
-                            {
-                                var reply = await ping.SendPingAsync(destIp, 1000, buffer, options);
-                                hops.Add(new { hop = ttl, ip = reply.Address?.ToString() ?? "*", status = reply.Status.ToString(), time = reply.RoundtripTime });
-                                if (reply.Status == IPStatus.Success) { status = "Success"; break; }
-                            }
-                            catch {
-                                hops.Add(new { hop = ttl, ip = "*", status = "TimedOut", time = 0 });
-                            }
-                        }
+                        var hops = await RunTracerouteCommand(target);
                         sw.Stop();
+                        status = hops.Count > 0 ? "Success" : "Investigate";
                         value = sw.ElapsedMilliseconds;
                         message = $"Traceroute finished ({hops.Count} hops)";
                         extraDetail = new { Hops = hops };
@@ -381,6 +323,41 @@ namespace Backend.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = $"Completed {results.Count} targets", results = results });
+        }
+
+        // ==========================================
+        // 🌐 Traceroute via host TracerouteService
+        // ==========================================
+        private static readonly string TraceServiceUrl =
+            Environment.GetEnvironmentVariable("TRACE_SERVICE_URL") ?? "http://host.docker.internal:5051/trace";
+
+        private async Task<List<object>> RunTracerouteCommand(string target)
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(95) };
+                var payload = new StringContent(
+                    System.Text.Json.JsonSerializer.Serialize(new { target }),
+                    System.Text.Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(TraceServiceUrl, payload);
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var hopsJson = doc.RootElement.GetProperty("hops");
+                var hops = new List<object>();
+                foreach (var h in hopsJson.EnumerateArray())
+                    hops.Add(new {
+                        hop = h.GetProperty("hop").GetInt32(),
+                        ip  = h.GetProperty("ip").GetString(),
+                        status = h.GetProperty("status").GetString(),
+                        time = h.GetProperty("time").GetInt64()
+                    });
+                return hops;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Traceroute Error] {ex.Message}");
+                return new List<object>();
+            }
         }
 
         // ==========================================
